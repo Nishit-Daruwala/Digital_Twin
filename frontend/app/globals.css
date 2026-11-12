@@ -1,0 +1,63 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design tokens (HSL channels). Light by default, dark follows the OS. */
+@layer base {
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 4%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 4%;
+    --primary: 252 70% 56%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 5% 96%;
+    --secondary-foreground: 240 6% 10%;
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 42%;
+    --accent: 240 5% 95%;
+    --accent-foreground: 240 6% 10%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 152 60% 38%;
+    --border: 240 6% 90%;
+    --input: 240 6% 86%;
+    --ring: 252 70% 56%;
+    --radius: 0.75rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --background: 240 10% 5%;
+      --foreground: 0 0% 96%;
+      --card: 240 8% 8%;
+      --card-foreground: 0 0% 96%;
+      --primary: 252 85% 70%;
+      --primary-foreground: 240 10% 6%;
+      --secondary: 240 5% 15%;
+      --secondary-foreground: 0 0% 96%;
+      --muted: 240 5% 15%;
+      --muted-foreground: 240 5% 66%;
+      --accent: 240 5% 16%;
+      --accent-foreground: 0 0% 96%;
+      --destructive: 0 70% 58%;
+      --destructive-foreground: 0 0% 100%;
+      --success: 152 55% 50%;
+      --border: 240 5% 18%;
+      --input: 240 5% 24%;
+      --ring: 252 85% 70%;
+    }
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    color-scheme: light dark;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+}

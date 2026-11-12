@@ -1,0 +1,8 @@
+# Store text files with LF in the repo so Windows and Linux CI agree.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.pdf binary
+*.woff binary
+*.woff2 binary
+*.ico binary
