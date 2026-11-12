@@ -7,11 +7,11 @@ import { EmptyState } from "@/components/empty-state";
 export default function WhatIfPage() {
   return (
     <>
-      <PageHeader title="What-if simulator" />
+      <PageHeader eyebrow="Simulator" title="What if…" />
       <EmptyState
         icon={FlaskConical}
         title="Not ready yet"
-        description="Once your twin has a model of you (Phase 4), you can move sliders like sleep or study time and see how tomorrow changes."
+        description="Once your twin has a model of you, you can change things like sleep or study time and see how tomorrow shifts."
       />
     </>
   );

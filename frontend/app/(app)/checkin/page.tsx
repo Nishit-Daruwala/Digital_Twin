@@ -2,19 +2,19 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check } from "lucide-react";
+import { Check, Minus, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/hooks";
 import type { Checkin, CheckinIn } from "@/lib/types";
 import { cn, isoDate } from "@/lib/utils";
 import { PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Slider } from "@/components/ui/slider";
+import { Scale } from "@/components/ui/scale";
 import { FormError } from "@/components/ui/alert";
-import { Spinner } from "@/components/spinner";
+import { Skeleton, Spinner } from "@/components/spinner";
 
 type Metric = "mood" | "energy" | "stress" | "focus";
 
@@ -26,6 +26,10 @@ const METRICS: { key: Metric; label: string; low: string; high: string }[] = [
 ];
 
 const DEFAULTS = { mood: 3, energy: 3, stress: 3, focus: 3, sleep_hours: "7", note: "" };
+
+function dayLabel(d: string, opts: Intl.DateTimeFormatOptions) {
+  return new Date(`${d}T00:00`).toLocaleDateString(undefined, opts);
+}
 
 export default function CheckinPage() {
   const qc = useQueryClient();
@@ -60,6 +64,14 @@ export default function CheckinPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [existingKey, date]);
 
+  const save = useMutation({
+    mutationFn: (body: CheckinIn) => api.saveCheckin(body),
+    onSuccess: (c: Checkin) => {
+      setSavedAt(c.updated_at);
+      qc.invalidateQueries({ queryKey: ["checkins"] });
+    },
+  });
+
   function pickDate(d: string) {
     setDate(d);
     setSavedAt(null);
@@ -69,13 +81,11 @@ export default function CheckinPage() {
   const sleep = form.sleep_hours === "" ? null : Number(form.sleep_hours);
   const sleepInvalid = sleep !== null && (Number.isNaN(sleep) || sleep < 0 || sleep > 24);
 
-  const save = useMutation({
-    mutationFn: (body: CheckinIn) => api.saveCheckin(body),
-    onSuccess: (c: Checkin) => {
-      setSavedAt(c.updated_at);
-      qc.invalidateQueries({ queryKey: ["checkins"] });
-    },
-  });
+  function stepSleep(delta: number) {
+    const base = sleep === null || Number.isNaN(sleep) ? 7 : sleep;
+    const v = Math.min(24, Math.max(0, Math.round((base + delta) * 2) / 2));
+    setForm((f) => ({ ...f, sleep_hours: String(v) }));
+  }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -91,130 +101,164 @@ export default function CheckinPage() {
     });
   }
 
+  const isToday = date === today;
+
   return (
     <>
       <PageHeader
-        title="Daily check-in"
-        description="Takes 20 seconds. One per day; saving again updates it."
+        eyebrow={dayLabel(date, { weekday: "long", day: "numeric", month: "long" })}
+        title={isToday ? "How was today?" : "Check-in"}
+        description="Takes about 20 seconds. One per day. Saving again updates it."
       />
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_280px]">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <Card>
-          <form onSubmit={submit} className="flex flex-col gap-6 p-5">
-            <div className="flex flex-col gap-2 sm:max-w-[200px]">
-              <Label htmlFor="date">Day</Label>
-              <Input
-                id="date"
-                type="date"
-                value={date}
-                max={today}
-                onChange={(e) => e.target.value && pickDate(e.target.value)}
-              />
-              {existing && (
-                <p className="text-xs text-muted-foreground">Editing your saved check-in.</p>
-              )}
-            </div>
-
-            {METRICS.map((m) => (
-              <div key={m.key} className="flex flex-col gap-2">
-                <div className="flex items-baseline justify-between">
-                  <Label id={`${m.key}-label`}>{m.label}</Label>
-                  <span className="text-sm font-semibold tabular-nums">{form[m.key]}/5</span>
-                </div>
-                <Slider
-                  aria-labelledby={`${m.key}-label`}
-                  aria-label={m.label}
-                  min={1}
-                  max={5}
-                  step={1}
-                  value={[form[m.key]]}
-                  onValueChange={([v]) => setForm((f) => ({ ...f, [m.key]: v }))}
+          <form onSubmit={submit}>
+            <div className="grid gap-x-10 gap-y-7 p-6 sm:grid-cols-2 md:p-7">
+              {METRICS.map((m) => (
+                <Scale
+                  key={m.key}
+                  label={m.label}
+                  low={m.low}
+                  high={m.high}
+                  value={form[m.key]}
+                  onChange={(v) => setForm((f) => ({ ...f, [m.key]: v }))}
                 />
-                <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{m.low}</span>
-                  <span>{m.high}</span>
+              ))}
+
+              <div className="flex flex-col gap-2.5">
+                <Label htmlFor="sleep">Sleep last night (hours)</Label>
+                <div className="flex items-center gap-1.5">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-11 shrink-0 px-0"
+                    onClick={() => stepSleep(-0.5)}
+                    aria-label="Less sleep"
+                  >
+                    <Minus />
+                  </Button>
+                  <Input
+                    id="sleep"
+                    type="number"
+                    inputMode="decimal"
+                    min={0}
+                    max={24}
+                    step={0.5}
+                    className="text-center font-mono"
+                    value={form.sleep_hours}
+                    aria-invalid={sleepInvalid}
+                    onChange={(e) => setForm((f) => ({ ...f, sleep_hours: e.target.value }))}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-11 w-11 shrink-0 px-0"
+                    onClick={() => stepSleep(0.5)}
+                    aria-label="More sleep"
+                  >
+                    <Plus />
+                  </Button>
                 </div>
+                {sleepInvalid && <p className="text-xs text-destructive">Enter 0 to 24 hours.</p>}
               </div>
-            ))}
 
-            <div className="flex flex-col gap-2 sm:max-w-[200px]">
-              <Label htmlFor="sleep">Sleep last night (hours)</Label>
-              <Input
-                id="sleep"
-                type="number"
-                inputMode="decimal"
-                min={0}
-                max={24}
-                step={0.5}
-                value={form.sleep_hours}
-                aria-invalid={sleepInvalid}
-                onChange={(e) => setForm((f) => ({ ...f, sleep_hours: e.target.value }))}
-              />
-              {sleepInvalid && <p className="text-xs text-destructive">Enter 0 to 24 hours.</p>}
+              <div className="flex flex-col gap-2.5">
+                <Label htmlFor="date">Day</Label>
+                <Input
+                  id="date"
+                  type="date"
+                  value={date}
+                  max={today}
+                  onChange={(e) => e.target.value && pickDate(e.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-2.5 sm:col-span-2">
+                <Label htmlFor="note">One line about today (optional)</Label>
+                <Input
+                  id="note"
+                  maxLength={280}
+                  placeholder="e.g. Productive morning, slumped after lunch"
+                  value={form.note}
+                  onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
+                />
+              </div>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="note">One line about today (optional)</Label>
-              <Input
-                id="note"
-                maxLength={280}
-                placeholder="e.g. Productive morning, slumped after lunch"
-                value={form.note}
-                onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
-              />
-            </div>
-
-            <FormError message={save.error?.message} />
-
-            <div className="flex items-center gap-3">
-              <Button type="submit" disabled={save.isPending || sleepInvalid}>
-                {save.isPending && <Spinner className="text-primary-foreground" />}
-                {existing ? "Update check-in" : "Save check-in"}
-              </Button>
-              {savedAt && !save.isPending && (
-                <span className="flex items-center gap-1 text-sm text-success" role="status">
-                  <Check className="h-4 w-4" aria-hidden /> Saved
-                </span>
-              )}
+            <div className="flex flex-col gap-3 border-t bg-secondary/40 px-6 py-4 md:px-7">
+              <FormError message={save.error?.message} />
+              <div className="flex items-center gap-4">
+                <Button type="submit" disabled={save.isPending || sleepInvalid}>
+                  {save.isPending && <Spinner className="text-primary-foreground" />}
+                  {existing ? "Update check-in" : "Save check-in"}
+                </Button>
+                {savedAt && !save.isPending ? (
+                  <span
+                    className="flex animate-fade-in items-center gap-1.5 text-sm font-medium text-success"
+                    role="status"
+                  >
+                    <Check className="h-4 w-4 animate-pop" strokeWidth={3} aria-hidden /> Saved
+                  </span>
+                ) : (
+                  existing && (
+                    <span className="text-sm text-muted-foreground">
+                      You already checked in for this day.
+                    </span>
+                  )
+                )}
+              </div>
             </div>
           </form>
         </Card>
 
         <Card className="h-fit">
-          <CardHeader>
-            <CardTitle className="text-base">Last 7 days</CardTitle>
-          </CardHeader>
-          <CardContent>
+          <div className="flex items-baseline justify-between px-5 pb-3 pt-5">
+            <h2 className="text-[15px] font-semibold">Last 7 days</h2>
+            <span className="font-mono text-xs text-muted-foreground">
+              {recent.data?.length ?? 0}/7
+            </span>
+          </div>
+          <div className="px-2 pb-3">
             {recent.isLoading ? (
-              <Spinner />
+              <div className="flex flex-col gap-2 px-3 pb-2">
+                {Array.from({ length: 7 }, (_, i) => (
+                  <Skeleton key={i} className="h-9" />
+                ))}
+              </div>
             ) : (
-              <ul className="flex flex-col gap-1">
+              <ul className="flex flex-col">
                 {Array.from({ length: 7 }, (_, i) => {
                   const d = isoDate(new Date(Date.now() - i * 864e5));
                   const c = recent.data?.find((x) => x.date === d);
+                  const selected = d === date;
                   return (
                     <li key={d}>
                       <button
                         type="button"
                         onClick={() => pickDate(d)}
+                        aria-current={selected ? "date" : undefined}
                         className={cn(
-                          "flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm hover:bg-accent",
-                          d === date && "bg-accent",
+                          "flex w-full items-center justify-between rounded-md px-3 py-2 text-left text-sm transition-colors duration-150",
+                          selected ? "bg-primary-soft" : "hover:bg-secondary",
                         )}
                       >
-                        <span>
-                          {new Date(`${d}T00:00`).toLocaleDateString(undefined, {
-                            weekday: "short",
-                            day: "numeric",
-                            month: "short",
-                          })}
+                        <span className={cn("flex items-center gap-2.5", selected && "font-semibold")}>
+                          <span
+                            className={cn(
+                              "h-2 w-2 rounded-full transition-colors",
+                              c ? "bg-primary" : "border border-input",
+                            )}
+                            aria-hidden
+                          />
+                          {i === 0 ? "Today" : dayLabel(d, { weekday: "short", day: "numeric", month: "short" })}
                         </span>
                         {c ? (
-                          <span className="text-xs tabular-nums text-muted-foreground">
-                            mood {c.mood} · energy {c.energy}
+                          <span className="font-mono text-xs text-muted-foreground">
+                            M{c.mood} · E{c.energy}
                           </span>
                         ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
+                          <span className="text-xs text-muted-foreground">No entry</span>
                         )}
                       </button>
                     </li>
@@ -222,7 +266,7 @@ export default function CheckinPage() {
                 })}
               </ul>
             )}
-          </CardContent>
+          </div>
         </Card>
       </div>
     </>

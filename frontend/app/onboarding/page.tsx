@@ -3,14 +3,13 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Plus, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Plus, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/hooks";
 import type { QuizAnswers } from "@/lib/types";
 import { AuthGuard } from "@/components/auth-guard";
-import { Logo } from "@/components/app-shell";
+import { Wordmark } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Chip } from "@/components/ui/chip";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,6 +116,7 @@ function Wizard({ name }: { name: string }) {
   const router = useRouter();
   const qc = useQueryClient();
   const [step, setStep] = useState(0);
+  const [dir, setDir] = useState<"fwd" | "back">("fwd");
   const [role, setRole] = useState("");
   const [goals, setGoals] = useState<string[]>([]);
   const [categories, setCategories] = useState<string[]>([]);
@@ -131,68 +131,97 @@ function Wizard({ name }: { name: string }) {
     },
   });
 
+  const answered = QUIZ.filter((q) => quiz[q.key] !== undefined).length;
   const canNext = [
     role.trim().length > 0,
     goals.length > 0,
     categories.length > 0,
-    QUIZ.every((q) => quiz[q.key] !== undefined),
+    answered === QUIZ.length,
   ][step];
 
-  function goToCategories() {
-    // Pre-fill category suggestions from the role the first time we reach this step.
-    if (categories.length === 0) {
-      const key = role.trim().toLowerCase();
-      setCategories((CATEGORY_SUGGESTIONS[key] ?? CATEGORY_SUGGESTIONS.default).slice(0, 5));
-    }
-    setStep(2);
+  function go(to: number) {
+    setDir(to > step ? "fwd" : "back");
+    setStep(to);
   }
 
   function next() {
     if (!canNext) return;
-    if (step === 1) goToCategories();
-    else if (step === 3) save.mutate();
-    else setStep(step + 1);
+    if (step === 1 && categories.length === 0) {
+      // Pre-fill category suggestions from the role the first time we reach this step.
+      const key = role.trim().toLowerCase();
+      setCategories((CATEGORY_SUGGESTIONS[key] ?? CATEGORY_SUGGESTIONS.default).slice(0, 5));
+    }
+    if (step === 3) save.mutate();
+    else go(step + 1);
   }
 
   const roleKey = role.trim().toLowerCase();
   const categorySuggestions = CATEGORY_SUGGESTIONS[roleKey] ?? CATEGORY_SUGGESTIONS.default;
 
+  const heading = [
+    { title: `Hi ${name}, what do you do?`, desc: "Your twin adapts its suggestions to your role." },
+    { title: "What are you working towards?", desc: `Pick up to ${MAX_GOALS}. Your twin nudges you towards them.` },
+    { title: "How do you spend your time?", desc: `These become the categories you log activities in. Up to ${MAX_CATEGORIES}.` },
+    { title: "Five quick questions", desc: "A first sketch of your personality. Your real data replaces it after about two weeks." },
+  ][step];
+
   return (
-    <div className="flex min-h-dvh flex-col items-center bg-secondary/40 px-4 py-8">
-      <div className="mb-6 flex items-center gap-2">
-        <Logo />
-        <span className="text-xl font-semibold">Twin</span>
+    <div className="flex min-h-dvh flex-col">
+      <header className="flex h-16 items-center justify-between border-b bg-card px-5 sm:px-8">
+        <Wordmark />
+        <span className="font-mono text-xs text-muted-foreground">
+          Step {step + 1} of {STEPS.length}
+        </span>
+      </header>
+
+      {/* Progress */}
+      <div className="h-[3px] bg-secondary" aria-hidden>
+        <div
+          className="h-full bg-primary transition-[width] duration-500 ease-out"
+          style={{ width: `${((step + 1) / STEPS.length) * 100}%` }}
+        />
       </div>
 
-      <div className="w-full max-w-lg">
-        <ol className="mb-4 flex gap-2" aria-label="Onboarding progress">
+      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col px-5 py-10 sm:px-8 sm:py-14">
+        <ol className="mb-10 hidden gap-6 sm:flex" aria-label="Onboarding progress">
           {STEPS.map((s, i) => (
-            <li key={s} className="flex-1">
-              <div
-                className={cn("h-1.5 rounded-full", i <= step ? "bg-primary" : "bg-border")}
-                aria-hidden
-              />
+            <li
+              key={s}
+              aria-current={i === step ? "step" : undefined}
+              className={cn(
+                "flex items-center gap-2 text-sm transition-colors duration-300",
+                i === step ? "font-semibold text-foreground" : "text-muted-foreground",
+              )}
+            >
               <span
                 className={cn(
-                  "mt-1 block text-xs",
-                  i === step ? "font-medium text-foreground" : "text-muted-foreground",
+                  "flex h-6 w-6 items-center justify-center rounded-md font-mono text-[11px] transition-colors duration-300",
+                  i < step && "bg-primary text-primary-foreground",
+                  i === step && "bg-foreground text-background",
+                  i > step && "border text-muted-foreground",
                 )}
-                aria-current={i === step ? "step" : undefined}
               >
-                {s}
+                {i < step ? (
+                  <Check className="h-3.5 w-3.5 animate-pop" strokeWidth={3} aria-hidden />
+                ) : (
+                  String(i + 1).padStart(2, "0")
+                )}
               </span>
+              {s}
             </li>
           ))}
         </ol>
 
-        <Card>
-          {step === 0 && (
-            <>
-              <CardHeader>
-                <CardTitle>Hi {name}, what do you do?</CardTitle>
-                <CardDescription>Your twin adapts its suggestions to your role.</CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
+        <div
+          key={step}
+          className={cn(dir === "fwd" ? "animate-slide-in-right" : "animate-slide-in-left")}
+        >
+          <h1 className="text-[28px] font-semibold leading-tight sm:text-[34px]">{heading.title}</h1>
+          <p className="mt-2 text-[15px] text-muted-foreground">{heading.desc}</p>
+
+          <div className="mt-8">
+            {step === 0 && (
+              <div className="flex flex-col gap-6">
                 <div className="flex flex-wrap gap-2">
                   {ROLES.map((r) => (
                     <Chip key={r} selected={role === r} onClick={() => setRole(r)}>
@@ -200,7 +229,7 @@ function Wizard({ name }: { name: string }) {
                     </Chip>
                   ))}
                 </div>
-                <div className="flex flex-col gap-2">
+                <div className="flex max-w-md flex-col gap-2">
                   <Label htmlFor="role">Or describe it yourself</Label>
                   <Input
                     id="role"
@@ -211,63 +240,48 @@ function Wizard({ name }: { name: string }) {
                     onKeyDown={(e) => e.key === "Enter" && next()}
                   />
                 </div>
-              </CardContent>
-            </>
-          )}
+              </div>
+            )}
 
-          {step === 1 && (
-            <>
-              <CardHeader>
-                <CardTitle>What are your goals?</CardTitle>
-                <CardDescription>Pick up to {MAX_GOALS}. Your twin nudges you towards them.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ListPicker
-                  values={goals}
-                  onChange={setGoals}
-                  suggestions={GOAL_SUGGESTIONS}
-                  max={MAX_GOALS}
-                  inputLabel="Add your own goal"
-                  placeholder="e.g. Read 20 pages a day"
-                />
-              </CardContent>
-            </>
-          )}
+            {step === 1 && (
+              <ListPicker
+                values={goals}
+                onChange={setGoals}
+                suggestions={GOAL_SUGGESTIONS}
+                max={MAX_GOALS}
+                inputLabel="Add your own goal"
+                placeholder="e.g. Read 20 pages a day"
+              />
+            )}
 
-          {step === 2 && (
-            <>
-              <CardHeader>
-                <CardTitle>How do you spend your time?</CardTitle>
-                <CardDescription>
-                  These categories are used to log activities. Up to {MAX_CATEGORIES}.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <ListPicker
-                  values={categories}
-                  onChange={setCategories}
-                  suggestions={categorySuggestions}
-                  max={MAX_CATEGORIES}
-                  inputLabel="Add a category"
-                  placeholder="e.g. Gym"
-                />
-              </CardContent>
-            </>
-          )}
+            {step === 2 && (
+              <ListPicker
+                values={categories}
+                onChange={setCategories}
+                suggestions={categorySuggestions}
+                max={MAX_CATEGORIES}
+                inputLabel="Add a category"
+                placeholder="e.g. Gym"
+              />
+            )}
 
-          {step === 3 && (
-            <>
-              <CardHeader>
-                <CardTitle>Five quick questions</CardTitle>
-                <CardDescription>
-                  A first guess at your personality. Your real data replaces it after ~2 weeks.
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-5">
-                {QUIZ.map((q) => (
-                  <fieldset key={q.key} className="flex flex-col gap-2">
-                    <legend className="mb-2 text-sm font-medium">{q.text}</legend>
-                    <div className="flex flex-wrap gap-2">
+            {step === 3 && (
+              <div className="flex flex-col divide-y rounded-lg border bg-card shadow-card">
+                {QUIZ.map((q, i) => (
+                  <fieldset
+                    key={q.key}
+                    className="flex animate-fade-up flex-col gap-3 p-5"
+                    style={{ animationDelay: `${i * 50}ms` }}
+                  >
+                    <legend className="contents">
+                      <span className="flex gap-3 text-[15px] font-semibold">
+                        <span className="font-mono text-xs font-medium leading-6 text-primary">
+                          {String(i + 1).padStart(2, "0")}
+                        </span>
+                        {q.text}
+                      </span>
+                    </legend>
+                    <div className="flex flex-wrap gap-2 sm:pl-7">
                       {q.options.map((o) => (
                         <Chip
                           key={String(o.value)}
@@ -280,28 +294,39 @@ function Wizard({ name }: { name: string }) {
                     </div>
                   </fieldset>
                 ))}
-              </CardContent>
-            </>
-          )}
+              </div>
+            )}
+          </div>
+        </div>
 
-          <div className="flex flex-col gap-3 p-5 pt-0">
-            <FormError message={save.error?.message} />
-            <div className="flex justify-between gap-3">
-              <Button
-                variant="ghost"
-                onClick={() => setStep(step - 1)}
-                disabled={step === 0 || save.isPending}
-              >
-                Back
-              </Button>
-              <Button onClick={next} disabled={!canNext || save.isPending}>
+        <div className="mt-auto pt-10">
+          <FormError message={save.error?.message} className="mb-4" />
+          <div className="flex items-center justify-between gap-3 border-t pt-6">
+            <Button
+              variant="ghost"
+              onClick={() => go(step - 1)}
+              disabled={step === 0 || save.isPending}
+              className={cn(step === 0 && "invisible")}
+            >
+              <ArrowLeft /> Back
+            </Button>
+            <div className="flex items-center gap-4">
+              {step === 3 && (
+                <span className="hidden font-mono text-xs text-muted-foreground sm:inline">
+                  {answered}/{QUIZ.length} answered
+                </span>
+              )}
+              <Button size="lg" onClick={next} disabled={!canNext || save.isPending} className="group">
                 {save.isPending && <Spinner className="text-primary-foreground" />}
                 {step === 3 ? "Create my twin" : "Next"}
+                {!save.isPending && (
+                  <ArrowRight className="transition-transform duration-200 group-hover:translate-x-0.5" />
+                )}
               </Button>
             </div>
           </div>
-        </Card>
-      </div>
+        </div>
+      </main>
     </div>
   );
 }
@@ -339,22 +364,33 @@ function ListPicker({
   const custom = values.filter((v) => !suggestions.some((s) => s.toLowerCase() === v.toLowerCase()));
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <div className="flex flex-wrap gap-2">
         {suggestions.map((s) => (
-          <Chip key={s} selected={has(s)} onClick={() => toggle(s)} disabled={!has(s) && full}>
+          <Chip key={s} tick selected={has(s)} onClick={() => toggle(s)} disabled={!has(s) && full}>
             {s}
           </Chip>
         ))}
         {custom.map((v) => (
-          <Chip key={v} selected onClick={() => toggle(v)} aria-label={`Remove ${v}`}>
+          <Chip
+            key={v}
+            selected
+            onClick={() => toggle(v)}
+            aria-label={`Remove ${v}`}
+            className="animate-pop"
+          >
             {v}
             <X className="h-3.5 w-3.5" aria-hidden />
           </Chip>
         ))}
       </div>
-      <div className="flex flex-col gap-2">
-        <Label htmlFor="custom-item">{inputLabel}</Label>
+      <div className="flex max-w-md flex-col gap-2">
+        <div className="flex items-baseline justify-between">
+          <Label htmlFor="custom-item">{inputLabel}</Label>
+          <span className="font-mono text-xs text-muted-foreground">
+            {values.length}/{max} selected
+          </span>
+        </div>
         <div className="flex gap-2">
           <Input
             id="custom-item"
@@ -373,7 +409,7 @@ function ListPicker({
           <Button
             type="button"
             variant="outline"
-            size="icon"
+            className="h-11 w-11 shrink-0 px-0"
             onClick={addDraft}
             disabled={!draft.trim() || full}
             aria-label="Add"
@@ -381,9 +417,6 @@ function ListPicker({
             <Plus />
           </Button>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {values.length}/{max} selected
-        </p>
       </div>
     </div>
   );

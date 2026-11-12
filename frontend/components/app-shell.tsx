@@ -4,24 +4,33 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   FlaskConical,
-  LayoutDashboard,
+  LayoutGrid,
   ListChecks,
-  MessageCircle,
+  MessageSquare,
   Settings,
-  SmilePlus,
+  SunMedium,
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Me } from "@/lib/types";
 
 const NAV: { href: string; label: string; icon: LucideIcon }[] = [
-  { href: "/chat", label: "Chat", icon: MessageCircle },
-  { href: "/checkin", label: "Check-in", icon: SmilePlus },
+  { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/checkin", label: "Check-in", icon: SunMedium },
   { href: "/log", label: "Log", icon: ListChecks },
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/whatif", label: "What-if", icon: FlaskConical },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]!.toUpperCase())
+    .join("");
+}
 
 export function AppShell({ me, children }: { me: Me; children: React.ReactNode }) {
   const pathname = usePathname();
@@ -30,84 +39,147 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
   return (
     <div className="min-h-dvh md:flex">
       {/* Desktop sidebar */}
-      <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r bg-card md:flex">
-        <div className="flex items-center gap-2 px-5 py-5">
-          <Logo />
-          <span className="text-lg font-semibold">Twin</span>
+      <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r bg-card md:flex">
+        <div className="px-6 pb-6 pt-7">
+          <Wordmark />
         </div>
-        <nav aria-label="Main" className="flex flex-1 flex-col gap-1 px-3">
-          {NAV.map(({ href, label, icon: Icon }) => (
-            <Link
-              key={href}
-              href={href}
-              aria-current={active(href) ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
-                active(href)
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
-            >
-              <Icon className="h-4 w-4" aria-hidden />
-              {label}
-            </Link>
-          ))}
+        <nav aria-label="Main" className="flex flex-1 flex-col gap-0.5 px-3">
+          {NAV.map(({ href, label, icon: Icon }) => {
+            const on = active(href);
+            return (
+              <Link
+                key={href}
+                href={href}
+                aria-current={on ? "page" : undefined}
+                className={cn(
+                  "group relative flex h-10 items-center gap-3 rounded-md px-3 text-sm transition-colors duration-150",
+                  on
+                    ? "bg-secondary font-semibold text-foreground"
+                    : "font-medium text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
+                )}
+              >
+                <span
+                  aria-hidden
+                  className={cn(
+                    "absolute left-0 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary transition-all duration-200 ease-out",
+                    on ? "opacity-100" : "scale-y-0 opacity-0",
+                  )}
+                />
+                <Icon
+                  className={cn(
+                    "h-[18px] w-[18px] transition-colors",
+                    on ? "text-primary" : "text-muted-foreground group-hover:text-foreground",
+                  )}
+                  strokeWidth={on ? 2.2 : 1.8}
+                  aria-hidden
+                />
+                {label}
+              </Link>
+            );
+          })}
         </nav>
-        <div className="border-t px-5 py-4 text-sm">
-          <p className="truncate font-medium">{me.user.name}</p>
-          <p className="truncate text-muted-foreground">{me.user.role}</p>
+        <div className="m-3 flex items-center gap-3 rounded-md border bg-background px-3 py-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-primary-soft font-mono text-xs font-medium text-primary">
+            {initials(me.user.name)}
+          </div>
+          <div className="min-w-0 text-sm">
+            <p className="truncate font-semibold leading-tight">{me.user.name}</p>
+            <p className="truncate text-xs text-muted-foreground">{me.user.role}</p>
+          </div>
         </div>
       </aside>
 
       {/* Mobile header */}
-      <header className="sticky top-0 z-10 flex items-center gap-2 border-b bg-background/90 px-4 py-3 backdrop-blur md:hidden">
-        <Logo />
-        <span className="font-semibold">Twin</span>
+      <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-card/95 px-4 backdrop-blur md:hidden">
+        <Wordmark />
+        <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-soft font-mono text-[11px] font-medium text-primary">
+          {initials(me.user.name)}
+        </div>
       </header>
 
-      <main className="mx-auto w-full max-w-4xl flex-1 px-4 pb-24 pt-6 md:px-8 md:pb-10">
-        {children}
+      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-7 md:px-10 md:pb-12 md:pt-10">
+        {/* Keyed by route so every page fades in on navigation */}
+        <div key={pathname} className="animate-fade-up">
+          {children}
+        </div>
       </main>
 
       {/* Mobile bottom nav */}
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-10 grid grid-cols-6 border-t bg-background/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
-        {NAV.map(({ href, label, icon: Icon }) => (
-          <Link
-            key={href}
-            href={href}
-            aria-current={active(href) ? "page" : undefined}
-            className={cn(
-              "flex flex-col items-center gap-0.5 py-2 text-[10px] font-medium",
-              active(href) ? "text-primary" : "text-muted-foreground",
-            )}
-          >
-            <Icon className="h-5 w-5" aria-hidden />
-            {label}
-          </Link>
-        ))}
+        {NAV.map(({ href, label, icon: Icon }) => {
+          const on = active(href);
+          return (
+            <Link
+              key={href}
+              href={href}
+              aria-current={on ? "page" : undefined}
+              className={cn(
+                "relative flex flex-col items-center gap-1 pb-2 pt-2.5 text-[10px] font-medium transition-colors",
+                on ? "text-primary" : "text-muted-foreground",
+              )}
+            >
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute inset-x-4 top-0 h-[2px] rounded-b-full bg-primary transition-all duration-200 ease-out",
+                  on ? "opacity-100" : "scale-x-0 opacity-0",
+                )}
+              />
+              <Icon className="h-5 w-5" strokeWidth={on ? 2.2 : 1.8} aria-hidden />
+              {label}
+            </Link>
+          );
+        })}
       </nav>
     </div>
   );
 }
 
+/** Brand mark: two offset bars, you and your twin. */
 export function Logo({ className }: { className?: string }) {
-  // Two overlapping circles: you and your twin.
   return (
-    <svg viewBox="0 0 32 32" aria-hidden className={cn("h-7 w-7", className)}>
-      <circle cx="12" cy="16" r="9" className="fill-primary/80" />
-      <circle cx="20" cy="16" r="9" className="fill-primary/40" />
+    <svg viewBox="0 0 24 24" aria-hidden className={cn("h-6 w-6", className)}>
+      <rect x="3" y="3" width="7.5" height="18" rx="1.5" className="fill-foreground" />
+      <rect x="13.5" y="6" width="7.5" height="15" rx="1.5" className="fill-primary" />
     </svg>
   );
 }
 
-export function PageHeader({ title, description }: { title: string; description?: string }) {
+export function Wordmark({ className }: { className?: string }) {
   return (
-    <div className="mb-6">
-      <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-      {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+    <span className={cn("flex items-center gap-2.5", className)}>
+      <Logo />
+      <span className="text-[19px] font-semibold tracking-tight">Twin</span>
+    </span>
+  );
+}
+
+export function PageHeader({
+  eyebrow,
+  title,
+  description,
+  action,
+}: {
+  eyebrow?: string;
+  title: string;
+  description?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        {eyebrow && <p className="eyebrow mb-2 text-primary">{eyebrow}</p>}
+        <h1 className="text-[28px] font-semibold leading-tight md:text-[32px]">{title}</h1>
+        {description && (
+          <p className="mt-2 max-w-xl text-[15px] leading-relaxed text-muted-foreground">
+            {description}
+          </p>
+        )}
+      </div>
+      {action}
     </div>
   );
 }

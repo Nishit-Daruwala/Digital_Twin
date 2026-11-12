@@ -8,10 +8,10 @@ import { qk, useMe } from "@/lib/hooks";
 import type { Consent, ConsentSource } from "@/lib/types";
 import { PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { FormError } from "@/components/ui/alert";
-import { Spinner } from "@/components/spinner";
+import { Skeleton } from "@/components/spinner";
 
 const CONSENT_LABELS: Record<ConsentSource, { title: string; desc: string }> = {
   checkin: { title: "Check-ins", desc: "Mood, energy, stress, focus and sleep." },
@@ -19,6 +19,26 @@ const CONSENT_LABELS: Record<ConsentSource, { title: string; desc: string }> = {
   chat: { title: "Chat messages", desc: "What you tell your twin in chat." },
   decisions: { title: "Decisions", desc: "Decisions you log and their outcomes." },
 };
+
+function Section({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="grid gap-4 border-b py-8 first:pt-0 last:border-0 md:grid-cols-[240px_1fr] md:gap-10">
+      <div>
+        <h2 className="text-[15px] font-semibold">{title}</h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{description}</p>
+      </div>
+      <div>{children}</div>
+    </section>
+  );
+}
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -46,80 +66,89 @@ export default function SettingsPage() {
     router.replace("/login");
   }
 
+  const profileRows = me
+    ? [
+        { k: "Name", v: me.user.name },
+        { k: "Email", v: me.user.email },
+        { k: "Role", v: me.user.role ?? "—" },
+        { k: "Goals", v: me.profile.goals.join(", ") },
+        { k: "Categories", v: me.profile.categories.join(", ") },
+      ]
+    : [];
+
   return (
     <>
-      <PageHeader title="Settings" description="Your profile and what your twin may learn from." />
+      <PageHeader eyebrow="Account" title="Settings" />
 
-      <div className="flex flex-col gap-6">
+      <Section title="Profile" description="Set during onboarding.">
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Profile</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {me && (
-              <dl className="grid gap-3 text-sm sm:grid-cols-[140px_1fr]">
-                <dt className="text-muted-foreground">Name</dt>
-                <dd>{me.user.name}</dd>
-                <dt className="text-muted-foreground">Email</dt>
-                <dd className="break-all">{me.user.email}</dd>
-                <dt className="text-muted-foreground">Role</dt>
-                <dd>{me.user.role}</dd>
-                <dt className="text-muted-foreground">Goals</dt>
-                <dd>{me.profile.goals.join(", ")}</dd>
-                <dt className="text-muted-foreground">Categories</dt>
-                <dd>{me.profile.categories.join(", ")}</dd>
-              </dl>
-            )}
-          </CardContent>
+          {me ? (
+            <dl className="divide-y">
+              {profileRows.map((r) => (
+                <div key={r.k} className="grid gap-1 px-5 py-3.5 text-sm sm:grid-cols-[120px_1fr]">
+                  <dt className="text-muted-foreground">{r.k}</dt>
+                  <dd className="break-words font-medium">{r.v}</dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <div className="flex flex-col gap-3 p-5">
+              <Skeleton className="h-5" />
+              <Skeleton className="h-5" />
+            </div>
+          )}
         </Card>
+      </Section>
 
+      <Section
+        title="Data sources"
+        description="Switch a source off and your twin stops learning from it."
+      >
         <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Data sources</CardTitle>
-            <CardDescription>
-              Turn a source off and your twin stops learning from it.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {consents.isLoading ? (
-              <Spinner />
-            ) : (
-              <ul className="flex flex-col divide-y">
-                {consents.data?.map((c) => (
-                  <li key={c.source} className="flex items-center justify-between gap-4 py-3">
-                    <div>
-                      <p id={`consent-${c.source}`} className="text-sm font-medium">
-                        {CONSENT_LABELS[c.source].title}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {CONSENT_LABELS[c.source].desc}
-                      </p>
-                    </div>
+          {consents.isLoading ? (
+            <div className="flex flex-col gap-3 p-5">
+              {Array.from({ length: 4 }, (_, i) => (
+                <Skeleton key={i} className="h-10" />
+              ))}
+            </div>
+          ) : (
+            <ul className="divide-y">
+              {consents.data?.map((c) => (
+                <li key={c.source} className="flex items-center justify-between gap-4 px-5 py-4">
+                  <div>
+                    <p id={`consent-${c.source}`} className="text-sm font-semibold">
+                      {CONSENT_LABELS[c.source].title}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {CONSENT_LABELS[c.source].desc}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <span className="hidden w-14 text-right font-mono text-[11px] uppercase text-muted-foreground sm:inline">
+                      {c.allowed ? "On" : "Off"}
+                    </span>
                     <Switch
                       aria-labelledby={`consent-${c.source}`}
                       checked={c.allowed}
                       onCheckedChange={(allowed) => toggle.mutate({ source: c.source, allowed })}
                     />
-                  </li>
-                ))}
-              </ul>
-            )}
-            <FormError message={consents.error?.message ?? toggle.error?.message} />
-          </CardContent>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </Card>
+        <FormError message={consents.error?.message ?? toggle.error?.message} className="mt-3" />
+      </Section>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Account</CardTitle>
-            <CardDescription>Data export and twin deletion arrive in a later phase.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button variant="outline" onClick={logout}>
-              <LogOut /> Log out
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
+      <Section
+        title="Session"
+        description="Data export and twin deletion arrive in a later phase."
+      >
+        <Button variant="outline" onClick={logout}>
+          <LogOut /> Log out
+        </Button>
+      </Section>
     </>
   );
 }

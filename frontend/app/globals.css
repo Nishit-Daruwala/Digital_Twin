@@ -2,51 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design tokens (HSL channels). Light by default, dark follows the OS. */
+/*
+  Twin design tokens (HSL channels).
+  Warm white surfaces, deep-navy ink (never pure black), one tangerine accent.
+*/
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 240 10% 4%;
+    --background: 45 25% 98%; /* warm off-white page */
+    --foreground: 222 45% 16%; /* deep navy ink */
     --card: 0 0% 100%;
-    --card-foreground: 240 10% 4%;
-    --primary: 252 70% 56%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 240 5% 96%;
-    --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
-    --muted-foreground: 240 4% 42%;
-    --accent: 240 5% 95%;
-    --accent-foreground: 240 6% 10%;
-    --destructive: 0 72% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 152 60% 38%;
-    --border: 240 6% 90%;
-    --input: 240 6% 86%;
-    --ring: 252 70% 56%;
-    --radius: 0.75rem;
-  }
+    --card-foreground: 222 45% 16%;
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --background: 240 10% 5%;
-      --foreground: 0 0% 96%;
-      --card: 240 8% 8%;
-      --card-foreground: 0 0% 96%;
-      --primary: 252 85% 70%;
-      --primary-foreground: 240 10% 6%;
-      --secondary: 240 5% 15%;
-      --secondary-foreground: 0 0% 96%;
-      --muted: 240 5% 15%;
-      --muted-foreground: 240 5% 66%;
-      --accent: 240 5% 16%;
-      --accent-foreground: 0 0% 96%;
-      --destructive: 0 70% 58%;
-      --destructive-foreground: 0 0% 100%;
-      --success: 152 55% 50%;
-      --border: 240 5% 18%;
-      --input: 240 5% 24%;
-      --ring: 252 85% 70%;
-    }
+    --primary: 17 86% 45%; /* tangerine, AA contrast with white text */
+    --primary-foreground: 0 0% 100%;
+    --primary-soft: 24 100% 96%; /* tinted backgrounds */
+
+    --secondary: 40 24% 95%;
+    --secondary-foreground: 222 45% 16%;
+    --muted: 40 24% 95%;
+    --muted-foreground: 220 12% 40%;
+    --accent: 40 26% 94%; /* hover surfaces */
+    --accent-foreground: 222 45% 16%;
+
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --success: 158 64% 30%;
+
+    --border: 40 14% 88%;
+    --input: 40 10% 80%;
+    --ring: 17 86% 45%;
+    --radius: 0.5rem;
   }
 
   * {
@@ -54,10 +39,52 @@
   }
 
   html {
-    color-scheme: light dark;
+    color-scheme: light;
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
     @apply bg-background text-foreground antialiased;
+    font-feature-settings: "ss01", "ss02";
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    @apply tracking-tight;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.18);
+  }
+
+  /* Number inputs: hide native spinners, we provide our own steppers */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+}
+
+@layer utilities {
+  /* Small uppercase mono label used above headings and for metadata. */
+  .eyebrow {
+    @apply font-mono text-[11px] font-medium uppercase tracking-[0.12em];
+  }
+}
+
+/* Respect users who ask for less motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
