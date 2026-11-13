@@ -37,8 +37,14 @@ uvicorn app.main:app --reload     # http://localhost:8000/docs
 cd frontend
 npm install
 copy .env.example .env.local
-npm run dev                       # http://localhost:3000
+npm run dev                       # http://localhost:3000  (Turbopack dev server)
 ```
+
+> **Page speed.** In dev mode Next.js compiles each page the first time you open it.
+> With Turbopack that takes about 0.2–0.5 s per page, and about 3 s for the very first one.
+> Real users never see this delay. To try the app at production speed (about 10 ms per page,
+> with pages prefetched), run `npm run preview`.
+> If Turbopack ever misbehaves, `npm run dev:webpack` uses the classic compiler.
 
 > The database uses port **5433**, not 5432, so it doesn't clash with a Postgres already
 > installed on the machine.
