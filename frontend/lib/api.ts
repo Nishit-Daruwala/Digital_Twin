@@ -3,12 +3,20 @@
 import type {
   Activity,
   ActivityIn,
+  ChatEvent,
+  ChatMessage,
   Checkin,
   CheckinIn,
+  ConfirmResult,
   Consent,
   ConsentSource,
+  Decision,
+  DecisionIn,
+  ExtractionCard,
   Me,
   OnboardingIn,
+  Persona,
+  SeedResult,
   TokenPair,
   TwinProfile,
 } from "./types";
@@ -169,4 +177,77 @@ export const api = {
   consents: () => request<Consent[]>("/privacy/consents"),
   setConsent: (source: ConsentSource, allowed: boolean) =>
     request<Consent[]>("/privacy/consents", json("PUT", { source, allowed })),
+
+  chatHistory: (limit = 100) => request<ChatMessage[]>(`/chat/history?limit=${limit}`),
+  sendChat,
+  confirmExtraction: (messageId: string, card: ExtractionCard) =>
+    request<ConfirmResult>(`/chat/extractions/${messageId}/confirm`, json("POST", card)),
+  dismissExtraction: (messageId: string) =>
+    request<ChatMessage>(`/chat/extractions/${messageId}/dismiss`, { method: "POST" }),
+
+  decisions: () => request<Decision[]>("/decisions"),
+  createDecision: (body: DecisionIn) => request<Decision>("/decisions", json("POST", body)),
+  updateDecision: (
+    id: string,
+    body: { outcome_rating?: number | null; choice?: string | null; reasoning?: string | null },
+  ) => request<Decision>(`/decisions/${id}`, json("PATCH", body)),
+  deleteDecision: (id: string) => request<void>(`/decisions/${id}`, { method: "DELETE" }),
+
+  demoSeed: (persona: Persona, days: number) =>
+    request<SeedResult>("/demo/seed", json("POST", { persona, days })),
 };
+
+/**
+ * Send a chat message and stream the reply. The server sends NDJSON events;
+ * `onEvent` is called for each one as it arrives.
+ */
+async function sendChat(
+  message: string,
+  today: string,
+  onEvent: (e: ChatEvent) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const open = () =>
+    fetch(`${API_URL}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${tokens.get()?.access_token ?? ""}`,
+      },
+      body: JSON.stringify({ message, today }),
+      signal,
+    });
+
+  let res: Response;
+  try {
+    res = await open();
+    if (res.status === 401 && (await refreshAccess())) res = await open();
+  } catch (err) {
+    if ((err as Error).name === "AbortError") throw err;
+    throw new ApiError(0, "Cannot reach the Twin server. Is the backend running?");
+  }
+  if (res.status === 401) {
+    signOutAndRedirect();
+    throw new ApiError(401, "Session expired");
+  }
+  if (!res.ok || !res.body) {
+    const body = await res.json().catch(() => null);
+    throw new ApiError(res.status, errorMessage(body, res.status));
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let nl: number;
+    while ((nl = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nl).trim();
+      buffer = buffer.slice(nl + 1);
+      if (line) onEvent(JSON.parse(line) as ChatEvent);
+    }
+  }
+  if (buffer.trim()) onEvent(JSON.parse(buffer) as ChatEvent);
+}

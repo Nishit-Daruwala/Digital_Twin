@@ -14,4 +14,10 @@ pgvector==0.3.6
 pyjwt==2.10.1
 bcrypt==4.2.1
 
-# ML / LLM libraries are added in Phase 2-3 (see plan).
+# --- LLM + data ---
+openai==1.58.1
+numpy==2.2.1
+pandas==2.2.3
+
+# Local embeddings (EMBEDDING_PROVIDER=local) need: pip install -r requirements-local-embeddings.txt
+# Phase 3 adds scikit-learn, XGBoost, SHAP, SciPy.

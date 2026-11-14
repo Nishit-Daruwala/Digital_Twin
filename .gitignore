@@ -22,6 +22,10 @@ htmlcov/
 backend/model_store/
 *.joblib
 
+# Downloaded embedding models and generated data (ground truth etc.)
+backend/.model_cache/
+backend/data/
+
 # Notebooks
 .ipynb_checkpoints/
 

@@ -8,6 +8,7 @@ import {
   ListChecks,
   MessageSquare,
   Settings,
+  Signpost,
   SunMedium,
   type LucideIcon,
 } from "lucide-react";
@@ -18,6 +19,7 @@ const NAV: { href: string; label: string; icon: LucideIcon }[] = [
   { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/checkin", label: "Check-in", icon: SunMedium },
   { href: "/log", label: "Log", icon: ListChecks },
+  { href: "/decisions", label: "Decisions", icon: Signpost },
   { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/whatif", label: "What-if", icon: FlaskConical },
   { href: "/settings", label: "Settings", icon: Settings },
@@ -107,7 +109,7 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
       {/* Mobile bottom nav */}
       <nav
         aria-label="Main"
-        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-6 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
+        className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-7 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
         {NAV.map(({ href, label, icon: Icon }) => {
           const on = active(href);
@@ -117,7 +119,7 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
               href={href}
               aria-current={on ? "page" : undefined}
               className={cn(
-                "relative flex flex-col items-center gap-1 pb-2 pt-2.5 text-[10px] font-medium transition-colors",
+                "relative flex min-w-0 flex-col items-center gap-1 pb-2 pt-2.5 text-[10px] font-medium tracking-tight transition-colors",
                 on ? "text-primary" : "text-muted-foreground",
               )}
             >
@@ -129,7 +131,7 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
                 )}
               />
               <Icon className="h-5 w-5" strokeWidth={on ? 2.2 : 1.8} aria-hidden />
-              {label}
+              <span className="max-w-full truncate px-0.5">{label}</span>
             </Link>
           );
         })}

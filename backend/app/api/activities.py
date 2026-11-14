@@ -21,7 +21,7 @@ def _own_activity(db, user: User, activity_id: uuid.UUID) -> Activity:
     return act
 
 
-def _check_category(db, user: User, category: str) -> str:
+def check_category(db, user: User, category: str) -> str:
     profile = db.get(TwinProfile, user.id)
     allowed = profile.categories if profile else []
     if not allowed:
@@ -38,7 +38,7 @@ def _check_category(db, user: User, category: str) -> str:
 @router.post("", response_model=ActivityOut, status_code=status.HTTP_201_CREATED)
 def create_activity(body: ActivityIn, user: CurrentUser, db: DB) -> Activity:
     data = body.model_dump()
-    data["category"] = _check_category(db, user, body.category)
+    data["category"] = check_category(db, user, body.category)
     act = Activity(**data, user_id=user.id, source="manual")
     db.add(act)
     db.commit()

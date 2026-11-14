@@ -1,0 +1,5 @@
+# For backend/notebooks (feature checks, later the evaluation notebook).
+-r requirements.txt
+jupyter==1.1.1
+nbconvert==7.16.4
+matplotlib==3.10.0

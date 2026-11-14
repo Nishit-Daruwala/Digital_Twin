@@ -21,7 +21,7 @@ def test_models_and_migrations_are_in_sync():
 def test_health_checks_database(client):
     r = client.get("/health")
     assert r.status_code == 200
-    assert r.json() == {"status": "ok", "database": "ok"}
+    assert r.json() == {"status": "ok", "database": "ok", "embeddings": "ready"}
 
 
 def test_security_headers(client):

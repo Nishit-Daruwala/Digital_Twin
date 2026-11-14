@@ -85,6 +85,9 @@ class Decision(Base):  # stretch
     choice: Mapped[str | None] = mapped_column(Text)
     reasoning: Mapped[str | None] = mapped_column(Text)
     outcome_rating: Mapped[int | None] = mapped_column(SmallInteger)
+    source: Mapped[str] = mapped_column(
+        String(10), default="manual", server_default="manual", nullable=False
+    )
 
 
 class Message(Base):
@@ -107,4 +110,12 @@ class Message(Base):
     embedding: Mapped[list[float] | None] = mapped_column(Vector(settings.embedding_dim))
     sentiment: Mapped[float | None] = mapped_column(Float)  # -1 .. 1
     topics: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+    # Chat consent at the moment the message was sent. False = saved for history only,
+    # never used for memory recall or features.
+    learnable: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true", nullable=False
+    )
+    # Pending confirmation card produced by extraction (user messages only).
+    extraction: Mapped[dict | None] = mapped_column(JSONB)
+    extraction_status: Mapped[str | None] = mapped_column(String(12))  # pending/confirmed/dismissed
     created_at: Mapped[datetime] = created_at_col()

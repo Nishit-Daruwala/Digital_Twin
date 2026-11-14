@@ -1,0 +1,4 @@
+# Free, offline embeddings (EMBEDDING_PROVIDER=local). Large (PyTorch, ~1 GB RAM at runtime),
+# so production on a small instance should use EMBEDDING_PROVIDER=openai instead.
+sentence-transformers==3.3.1
+torch>=2.6,<2.8

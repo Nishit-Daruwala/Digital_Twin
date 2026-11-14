@@ -1,17 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { LogOut } from "lucide-react";
+import { AlertTriangle, Check, Database, LogOut } from "lucide-react";
 import { api } from "@/lib/api";
 import { qk, useMe } from "@/lib/hooks";
-import type { Consent, ConsentSource } from "@/lib/types";
+import type { Consent, ConsentSource, Persona } from "@/lib/types";
+import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { FormError } from "@/components/ui/alert";
-import { Skeleton } from "@/components/spinner";
+import { Skeleton, Spinner } from "@/components/spinner";
 
 const CONSENT_LABELS: Record<ConsentSource, { title: string; desc: string }> = {
   checkin: { title: "Check-ins", desc: "Mood, energy, stress, focus and sleep." },
@@ -141,6 +143,8 @@ export default function SettingsPage() {
         <FormError message={consents.error?.message ?? toggle.error?.message} className="mt-3" />
       </Section>
 
+      <DemoData />
+
       <Section
         title="Session"
         description="Data export and twin deletion arrive in a later phase."
@@ -150,5 +154,117 @@ export default function SettingsPage() {
         </Button>
       </Section>
     </>
+  );
+}
+
+const PERSONAS: { key: Persona; title: string; desc: string }[] = [
+  { key: "student", title: "Student", desc: "Night owl. Short sleep hurts next-day focus; tasks take 1.6× the estimate." },
+  { key: "developer", title: "Developer", desc: "Morning person. Busy meeting days drain energy; Mondays are low." },
+  { key: "founder", title: "Founder", desc: "Stress builds two days before mood drops; exercise lifts the next day." },
+  { key: "noise", title: "Control (random)", desc: "No hidden patterns at all. A good twin should find nothing." },
+];
+
+function DemoData() {
+  const qc = useQueryClient();
+  const [persona, setPersona] = useState<Persona>("student");
+  const [days, setDays] = useState(60);
+  const [armed, setArmed] = useState(false);
+
+  const seed = useMutation({
+    mutationFn: () => api.demoSeed(persona, days),
+    onSuccess: () => {
+      setArmed(false);
+      // Everything changed: drop all cached data so every page refetches.
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "me" });
+      qc.invalidateQueries({ queryKey: qk.me });
+    },
+  });
+
+  return (
+    <Section
+      title="Demo data"
+      description="Fill your account with a synthetic person's history to see the twin with weeks of data."
+    >
+      <Card>
+        <div className="flex flex-col gap-5 p-5">
+          <div role="radiogroup" aria-label="Persona" className="grid gap-2 sm:grid-cols-2">
+            {PERSONAS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                role="radio"
+                aria-checked={persona === p.key}
+                onClick={() => {
+                  setPersona(p.key);
+                  setArmed(false);
+                }}
+                className={cn(
+                  "rounded-md border p-3.5 text-left transition-[border-color,background-color] duration-150",
+                  persona === p.key ? "border-primary bg-primary-soft" : "hover:border-foreground/35",
+                )}
+              >
+                <p className={cn("text-sm font-semibold", persona === p.key && "text-primary")}>
+                  {p.title}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{p.desc}</p>
+              </button>
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-[13px] font-semibold" id="days-label">History</span>
+            <div role="radiogroup" aria-labelledby="days-label" className="flex gap-1 rounded-md border bg-secondary p-1">
+              {[30, 60, 90].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  role="radio"
+                  aria-checked={days === d}
+                  onClick={() => {
+                    setDays(d);
+                    setArmed(false);
+                  }}
+                  className={cn(
+                    "rounded-[5px] px-3 py-1 font-mono text-xs font-medium transition-colors",
+                    days === d ? "bg-card shadow-card" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {d} days
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {seed.data && !seed.isPending && (
+            <p role="status" className="flex animate-fade-in items-start gap-2 rounded-md border border-success/25 bg-success/[0.06] px-3 py-2.5 text-sm">
+              <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" strokeWidth={3} />
+              Loaded {seed.data.checkins} check-ins, {seed.data.activities} activities,{" "}
+              {seed.data.messages} chat messages and {seed.data.decisions} decisions.
+            </p>
+          )}
+          <FormError message={seed.error?.message} />
+        </div>
+        <div className="flex flex-wrap items-center gap-3 border-t bg-secondary/40 px-5 py-4">
+          {!armed ? (
+            <Button variant="outline" onClick={() => setArmed(true)} disabled={seed.isPending}>
+              <Database /> Load demo data
+            </Button>
+          ) : (
+            <div className="flex animate-fade-in flex-wrap items-center gap-3">
+              <span className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+                <AlertTriangle className="h-4 w-4" /> This replaces all your check-ins, activities, chat and decisions.
+              </span>
+              <Button variant="destructive" size="sm" onClick={() => seed.mutate()} disabled={seed.isPending}>
+                {seed.isPending && <Spinner className="text-destructive-foreground" />}
+                Replace my data
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setArmed(false)} disabled={seed.isPending}>
+                Cancel
+              </Button>
+            </div>
+          )}
+        </div>
+      </Card>
+    </Section>
   );
 }

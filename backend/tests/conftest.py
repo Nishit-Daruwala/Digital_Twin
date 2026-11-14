@@ -6,16 +6,23 @@ import uuid
 from collections.abc import Iterator
 from pathlib import Path
 
-import pytest
-from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
+# Tests never call OpenAI or download models: deterministic fakes for both.
+# Set before importing the app so Settings picks them up (env beats .env).
+os.environ["LLM_PROVIDER"] = "fake"
+os.environ["EMBEDDING_PROVIDER"] = "fake"
+os.environ["DEMO_ENABLED"] = "true"
 
-from alembic import command
-from alembic.config import Config
-from app.core.config import settings
-from app.db import get_db
-from app.main import app
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+from sqlalchemy import create_engine, text  # noqa: E402
+from sqlalchemy.orm import sessionmaker  # noqa: E402
+
+from alembic import command  # noqa: E402
+from alembic.config import Config  # noqa: E402
+from app.api.chat import limiter  # noqa: E402
+from app.core.config import settings  # noqa: E402
+from app.db import get_db, get_session_factory  # noqa: E402
+from app.main import app  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 TEST_URL = settings.test_database_url
@@ -44,6 +51,7 @@ def migrated_db() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def clean_tables() -> Iterator[None]:
+    limiter.reset()
     yield
     with engine.begin() as conn:
         conn.execute(text("TRUNCATE users CASCADE"))
@@ -60,6 +68,7 @@ def _override_get_db():
 @pytest.fixture
 def client() -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = _override_get_db
+    app.dependency_overrides[get_session_factory] = lambda: TestSession
     with TestClient(app) as c:
         yield c
     app.dependency_overrides.clear()

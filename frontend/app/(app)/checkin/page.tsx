@@ -255,7 +255,7 @@ export default function CheckinPage() {
                         </span>
                         {c ? (
                           <span className="font-mono text-xs text-muted-foreground">
-                            M{c.mood} · E{c.energy}
+                            M{c.mood ?? "–"} · E{c.energy ?? "–"}
                           </span>
                         ) : (
                           <span className="text-xs text-muted-foreground">No entry</span>

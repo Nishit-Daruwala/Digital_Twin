@@ -8,6 +8,8 @@ export const qk = {
   checkins: (from?: string, to?: string) => ["checkins", from, to] as const,
   activities: (from?: string, to?: string) => ["activities", from, to] as const,
   consents: ["consents"] as const,
+  chat: ["chat"] as const,
+  decisions: ["decisions"] as const,
 };
 
 export function useMe(enabled = true) {

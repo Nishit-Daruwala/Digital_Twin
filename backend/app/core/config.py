@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -22,12 +23,25 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:3000"
 
+    # LLM: "openai" for real use, "fake" for tests/offline dev (deterministic, no API calls)
+    llm_provider: Literal["openai", "fake"] = "openai"
     openai_api_key: str = ""
     openai_chat_model: str = "gpt-4o-mini"
     openai_extraction_model: str = "gpt-4o-mini"
+    openai_embedding_model: str = "text-embedding-3-small"
 
-    embedding_provider: str = "local"
+    # Embeddings: "local" (sentence-transformers), "openai" (API, same 384 dims), "fake" (tests)
+    embedding_provider: Literal["local", "openai", "fake"] = "local"
     embedding_dim: int = 384
+    local_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+
+    # Chat
+    chat_rate_limit_per_min: int = 20
+    memory_top_k: int = 5
+    memory_max_distance: float = 0.75  # cosine distance; larger = less similar
+
+    # Synthetic demo data (/demo/seed). Keep off in production unless demoing.
+    demo_enabled: bool = False
 
     app_env: str = "development"  # development / test / production
 
