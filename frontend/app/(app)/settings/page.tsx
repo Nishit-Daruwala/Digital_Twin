@@ -239,7 +239,8 @@ function DemoData() {
             <p role="status" className="flex animate-fade-in items-start gap-2 rounded-md border border-success/25 bg-success/[0.06] px-3 py-2.5 text-sm">
               <Check className="mt-0.5 h-4 w-4 shrink-0 text-success" strokeWidth={3} />
               Loaded {seed.data.checkins} check-ins, {seed.data.activities} activities,{" "}
-              {seed.data.messages} chat messages and {seed.data.decisions} decisions.
+              {seed.data.messages} chat messages and {seed.data.decisions} decisions, then updated
+              your twin ({seed.data.pipeline}). See the Dashboard.
             </p>
           )}
           <FormError message={seed.error?.message} />

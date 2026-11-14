@@ -202,6 +202,54 @@ class OpenAIProvider:
             log.warning("reply stream failed: %s", type(exc).__name__)
             raise self._translate(exc) from exc
 
+    def reword_insights(self, items: list[dict]) -> dict[str, str]:
+        """items: [{id, sentence}] -> {id: reworded}. One call for all of a user's insights."""
+        schema = {
+            "type": "object",
+            "additionalProperties": False,
+            "required": ["items"],
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "required": ["id", "text"],
+                        "properties": {"id": {"type": "string"}, "text": {"type": "string"}},
+                    },
+                }
+            },
+        }
+        try:
+            resp = self.client.chat.completions.create(
+                model=settings.openai_extraction_model,
+                temperature=0.3,
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {"name": "insights", "strict": True, "schema": schema},
+                },
+                messages=[
+                    {"role": "system", "content": INSIGHT_PROMPT},
+                    {"role": "user", "content": json.dumps(items, ensure_ascii=False)},
+                ],
+            )
+            data = json.loads(resp.choices[0].message.content or "{}")
+        except Exception as exc:  # noqa: BLE001
+            raise self._translate(exc) from exc
+        return {i["id"]: i["text"] for i in data.get("items", []) if "id" in i}
+
+
+INSIGHT_PROMPT = (
+    "You rewrite short statistical findings about ONE person into one friendly, plain "
+    "sentence each, speaking to them as 'you'. Rules:\n"
+    "- Keep every number EXACTLY as given (same digits, same units). Add no new numbers.\n"
+    "- Keep the timing EXACTLY: 'The day after' must stay 'the day after' (or 'the next "
+    "day'); 'Two days after' must stay two days; 'On days when' means the same day.\n"
+    "- Describe a link, never a cause: say 'tends to', 'is linked with'. "
+    "Never say 'causes', 'because' or give advice.\n"
+    "- At most 30 words. No emoji. Return the same ids."
+)
+
 
 # --------------------------------------------------------------------------------------
 # Fake (offline, deterministic)
@@ -339,6 +387,9 @@ class FakeProvider:
             parts.append(f"Your latest check-in ({checkin.group(1)}) had mood {checkin.group(2)}.")
         for word in " ".join(parts).split(" "):
             yield word + " "
+
+    def reword_insights(self, items: list[dict]) -> dict[str, str]:
+        return {i["id"]: i["sentence"] for i in items}  # templates are already readable
 
 
 # --------------------------------------------------------------------------------------

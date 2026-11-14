@@ -10,6 +10,8 @@ export const qk = {
   consents: ["consents"] as const,
   chat: ["chat"] as const,
   decisions: ["decisions"] as const,
+  dashboard: ["dashboard"] as const,
+  pending: ["predictions", "pending"] as const,
 };
 
 export function useMe(enabled = true) {

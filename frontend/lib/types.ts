@@ -187,4 +187,117 @@ export interface SeedResult {
   messages: number;
   decisions: number;
   planted_patterns: string[];
+  pipeline: string;
+}
+
+// ---------- Phase 3: insights, predictions, dashboard ----------
+
+export interface Insight {
+  id: string;
+  type: "pattern" | "anomaly";
+  key: string | null;
+  text: string;
+  evidence: Record<string, unknown> & {
+    r?: number;
+    p?: number;
+    p_adj?: number;
+    n?: number;
+    lag?: number;
+    feature?: string;
+    target?: string;
+    worse_mean?: number;
+    other_mean?: number;
+    n_worse?: number;
+    n_other?: number;
+    worse_side?: "high" | "low";
+    threshold?: number;
+    binary?: boolean;
+    template?: string;
+    wording?: "llm" | "template";
+    fading?: boolean;
+    kind?: string;
+    metric?: string;
+    worse?: boolean;
+  };
+  confidence: number | null;
+  rank: number | null;
+  first_seen: string | null;
+  last_seen: string | null;
+  is_new: boolean;
+}
+
+export interface Contributor {
+  feature: string;
+  label: string;
+  value: number | null;
+  impact: number;
+  share: number;
+  direction: "up" | "down";
+}
+
+export interface Prediction {
+  id: string;
+  for_date: string;
+  target: "mood" | "energy" | "task";
+  task_id: string | null;
+  task_title: string | null;
+  predicted: number;
+  baseline: number | null;
+  low: number | null;
+  high: number | null;
+  model_kind: string | null;
+  backtest: boolean;
+  actual: number | null;
+  confirmed_at: string | null;
+  explanation: {
+    model?: string;
+    contributors?: Contributor[];
+    summary?: string | null;
+    start_from?: number | null;
+    units?: string;
+    metrics?: Record<string, unknown>;
+  };
+  suggested_actual: number | null;
+}
+
+export interface Accuracy {
+  accuracy: number | null;
+  baseline_accuracy: number | null;
+  n: number;
+  backtest_share: number;
+  by_target: Record<string, number>;
+}
+
+export interface JobRun {
+  id: string;
+  trigger: string;
+  status: "running" | "ok" | "error" | "skipped";
+  started_at: string;
+  finished_at: string | null;
+  duration_ms: number | null;
+  steps: Record<string, Record<string, unknown>>;
+  error: string | null;
+}
+
+export interface SeriesPoint {
+  date: string;
+  mood: number | null;
+  energy: number | null;
+  focus: number | null;
+  stress: number | null;
+  sleep_hours: number | null;
+}
+
+export interface Dashboard {
+  data_days: number;
+  learning: { days: number; target: number; phase: "learning" | "predicting" };
+  accuracy: Accuracy;
+  tomorrow: Prediction[];
+  insights: Insight[];
+  anomalies: Insight[];
+  traits: Record<string, Trait & { detail?: string }>;
+  series: SeriesPoint[];
+  minutes_by_category: { category: string; minutes: number }[];
+  last_run: JobRun | null;
+  pending_count: number;
 }

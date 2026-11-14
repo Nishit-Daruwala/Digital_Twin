@@ -2,6 +2,7 @@
 so the migrations themselves are tested too."""
 
 import os
+import tempfile
 import uuid
 from collections.abc import Iterator
 from pathlib import Path
@@ -11,6 +12,9 @@ from pathlib import Path
 os.environ["LLM_PROVIDER"] = "fake"
 os.environ["EMBEDDING_PROVIDER"] = "fake"
 os.environ["DEMO_ENABLED"] = "true"
+os.environ["SCHEDULER_ENABLED"] = "false"  # no background nightly job during tests
+os.environ["DEMO_BACKTEST_DAYS"] = "3"  # keep /demo/seed fast in tests
+os.environ["MODEL_STORE_DIR"] = tempfile.mkdtemp(prefix="twin-models-")
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

@@ -7,10 +7,21 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.api import activities, auth, chat, checkins, decisions, demo, privacy, profile
+from app.api import (
+    activities,
+    auth,
+    chat,
+    checkins,
+    decisions,
+    demo,
+    intelligence,
+    privacy,
+    profile,
+)
 from app.api.deps import DB
 from app.core.config import settings
 from app.db import SessionLocal
+from app.jobs import nightly
 from app.services import embeddings
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -22,7 +33,9 @@ async def lifespan(_app: FastAPI):
     # Load the local embedding model in the background (can take minutes on a cold
     # machine), then embed any messages that were saved while it was loading.
     embeddings.warm_up_in_background(lambda: embeddings.backfill_missing(SessionLocal))
+    nightly.start()  # nightly ML pipeline (SCHEDULER_ENABLED)
     yield
+    nightly.stop()
 
 
 app = FastAPI(
@@ -65,6 +78,7 @@ for r in (
     activities.router,
     chat.router,
     decisions.router,
+    intelligence.router,
     privacy.router,
     demo.router,
 ):

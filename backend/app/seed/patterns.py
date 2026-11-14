@@ -26,6 +26,12 @@ def short_sleep_share(a: Archetype) -> float:
     return 0.5 * (1 + math.erf((6 - a.sleep_mean) / (a.sleep_sd * math.sqrt(2))))
 
 
+def day_share(a: Archetype, kind: str) -> float:
+    """Share of days the category of this kind happens (weekly average)."""
+    c = a.cat_of_kind(kind)
+    return 0.0 if c is None else (5 * c.p_weekday + 2 * c.p_weekend) / 7
+
+
 def _clip(x: float, lim: float = 1.2) -> float:
     return max(-lim, min(lim, x))
 
@@ -42,12 +48,19 @@ class Pattern:
     requires: tuple[str, ...] = ()  # category kinds the archetype must have
     needs_late: bool = False
     needs_short_sleep: bool = False  # only meaningful if the person sometimes sleeps < 6h
+    # (kind, min, max): the trigger must happen on a detectable share of days. An effect that
+    # fires on 10% or 90% of days can't show up in ~90 days of data, however real it is.
+    share: tuple[str, float, float] | None = None
 
     def compatible(self, a: Archetype) -> bool:
         if self.needs_late and a.late_prob < 0.2:
             return False
         if self.needs_short_sleep and short_sleep_share(a) < 0.2:
             return False
+        if self.share:
+            kind, lo, hi = self.share
+            if not lo <= day_share(a, kind) <= hi:
+                return False
         return all(a.cat_of_kind(k) for k in self.requires)
 
     def truth(self, a: Archetype) -> dict:
@@ -169,6 +182,7 @@ PATTERNS: dict[str, Pattern] = {
             -1,
             _p_meetings_energy,
             ("meetings",),
+            share=("meetings", 0.5, 1.0),
         ),
         Pattern(
             "exercise_next_mood",
@@ -179,6 +193,7 @@ PATTERNS: dict[str, Pattern] = {
             +1,
             _p_exercise_next_mood,
             ("exercise",),
+            share=("exercise", 0.2, 0.8),
         ),
         Pattern(
             "stress_leads_mood",
@@ -231,6 +246,7 @@ PATTERNS: dict[str, Pattern] = {
             +1,
             _p_social_next_energy,
             ("social",),
+            share=("social", 0.2, 0.8),
         ),
         Pattern(
             "sleep_low_next_stress",
@@ -251,6 +267,7 @@ PATTERNS: dict[str, Pattern] = {
             +1,
             _p_exercise_energy,
             ("exercise",),
+            share=("exercise", 0.2, 0.8),
         ),
         Pattern(
             "leisure_stress",
@@ -288,5 +305,11 @@ STRUCTURAL = [
         "target": "completion_rate",
         "lag": 0,
         "why": "task completion probability depends on focus",
+    },
+    {
+        "feature": "planned_min / start hour",
+        "target": "task completion",
+        "lag": 0,
+        "why": "long tasks and tasks far from the peak hour are finished less often",
     },
 ]

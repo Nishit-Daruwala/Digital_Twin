@@ -10,12 +10,17 @@ import type {
   ConfirmResult,
   Consent,
   ConsentSource,
+  Dashboard,
   Decision,
   DecisionIn,
   ExtractionCard,
+  Insight,
+  JobRun,
   Me,
   OnboardingIn,
   Persona,
+  Prediction,
+  Accuracy,
   SeedResult,
   TokenPair,
   TwinProfile,
@@ -195,6 +200,17 @@ export const api = {
 
   demoSeed: (persona: Persona, days: number) =>
     request<SeedResult>("/demo/seed", json("POST", { persona, days })),
+
+  dashboard: () => request<Dashboard>("/dashboard"),
+  insights: () => request<Insight[]>("/insights"),
+  predictionsTomorrow: () => request<Prediction[]>("/predictions/tomorrow"),
+  predictionsPending: () => request<Prediction[]>("/predictions/pending"),
+  confirmPrediction: (id: string, actual: number) =>
+    request<{ prediction: Prediction; accuracy: Accuracy }>(
+      `/predictions/${id}/confirm`,
+      json("POST", { actual }),
+    ),
+  retrain: () => request<JobRun>("/jobs/retrain", { method: "POST" }),
 };
 
 /**

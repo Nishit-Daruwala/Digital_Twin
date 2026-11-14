@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Scale } from "@/components/ui/scale";
 import { FormError } from "@/components/ui/alert";
 import { Skeleton, Spinner } from "@/components/spinner";
+import { PendingPredictions } from "@/components/twin/pending-card";
 
 type Metric = "mood" | "energy" | "stress" | "focus";
 
@@ -69,6 +70,7 @@ export default function CheckinPage() {
     onSuccess: (c: Checkin) => {
       setSavedAt(c.updated_at);
       qc.invalidateQueries({ queryKey: ["checkins"] });
+      qc.invalidateQueries({ queryKey: ["predictions"] });
     },
   });
 
@@ -110,6 +112,8 @@ export default function CheckinPage() {
         title={isToday ? "How was today?" : "Check-in"}
         description="Takes about 20 seconds. One per day. Saving again updates it."
       />
+
+      <PendingPredictions />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_300px]">
         <Card>

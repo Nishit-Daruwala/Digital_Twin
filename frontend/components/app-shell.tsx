@@ -27,6 +27,7 @@ const NAV: { href: string; label: string; icon: LucideIcon }[] = [
 
 function initials(name: string) {
   return name
+    .replace(/[^A-Za-zÀ-ɏ\s]/g, " ") // letters only: "Lin (founder)" -> "LF"
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)

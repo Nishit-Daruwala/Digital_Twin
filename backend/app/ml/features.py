@@ -214,8 +214,12 @@ def build_features(
 # --------------------------------------------------------------------------------------
 
 
-def load_frames(db: Session, user_id: uuid.UUID, since: date | None = None):
-    """Load a user's raw data as DataFrames, skipping sources without consent."""
+def load_frames(
+    db: Session, user_id: uuid.UUID, since: date | None = None, until: date | None = None
+):
+    """Load a user's raw data as DataFrames, skipping sources without consent.
+    `until` (inclusive) keeps future-dated rows (tasks planned for tomorrow) out of the
+    feature table; they are plans, not history."""
     from app.api.privacy import consent_map
     from app.models import Activity, Checkin, Message, TwinProfile
 
@@ -232,6 +236,8 @@ def load_frames(db: Session, user_id: uuid.UUID, since: date | None = None):
         q = select(*[getattr(Checkin, c) for c in ck_cols]).where(Checkin.user_id == user_id)
         if since:
             q = q.where(Checkin.date >= since)
+        if until:
+            q = q.where(Checkin.date <= until)
         checkins = frame(db.execute(q).all(), ck_cols)
 
     act_cols = [
@@ -248,6 +254,8 @@ def load_frames(db: Session, user_id: uuid.UUID, since: date | None = None):
         q = select(*[getattr(Activity, c) for c in act_cols]).where(Activity.user_id == user_id)
         if since:
             q = q.where(Activity.date >= since)
+        if until:
+            q = q.where(Activity.date <= until)
         activities = frame(db.execute(q).all(), act_cols)
         activities[["planned", "completed"]] = activities[["planned", "completed"]].astype(bool)
         for c in ("duration_min", "planned_min"):
@@ -265,10 +273,14 @@ def load_frames(db: Session, user_id: uuid.UUID, since: date | None = None):
         )
         if since:
             messages = messages[messages["date"] >= since]
+        if until:
+            messages = messages[messages["date"] <= until]
         messages["sentiment"] = pd.to_numeric(messages["sentiment"], errors="coerce")
 
     return checkins, activities, messages, categories
 
 
-def build_user_features(db: Session, user_id: uuid.UUID, since: date | None = None) -> pd.DataFrame:
-    return build_features(*load_frames(db, user_id, since))
+def build_user_features(
+    db: Session, user_id: uuid.UUID, since: date | None = None, until: date | None = None
+) -> pd.DataFrame:
+    return build_features(*load_frames(db, user_id, since, until))

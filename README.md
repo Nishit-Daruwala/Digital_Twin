@@ -7,19 +7,20 @@ activity logs and chat, then predicts and recommends.
 |---|---|---|
 | 1. Foundation: auth, schema, onboarding, check-in, log | 1–2 | ✅ Done |
 | 2. Learning inputs: chat + RAG memory, decisions, synthetic data, features | 3–4 | ✅ Done |
-| 3. Core intelligence: patterns, predictions, SHAP, traits | 5–6 | ⏳ |
+| 3. Core intelligence: patterns, anomalies, predictions, SHAP, traits, accuracy | 5–6 | ✅ Done |
 | 4. Adapt & ship: recommendations, what-if, privacy, deploy | 7–8 | ⏳ |
 
 ## Stack
 
-- **frontend/**: Next.js 14 (App Router), TypeScript, Tailwind, shadcn-style UI, TanStack Query
-- **backend/**: FastAPI, SQLAlchemy 2, Alembic, JWT (access + refresh), bcrypt, pandas
+- **frontend/**: Next.js 14 (App Router), TypeScript, Tailwind, shadcn-style UI, TanStack Query, Recharts
+- **backend/**: FastAPI, SQLAlchemy 2, Alembic, JWT (access + refresh), bcrypt, APScheduler
+- **ML**: pandas, SciPy, scikit-learn, XGBoost, SHAP (all per user, on that user's own data)
 - **AI**: OpenAI (extraction + replies), sentence-transformers or OpenAI embeddings, pgvector memory
 - **Database**: PostgreSQL 16 + pgvector (Docker for local development)
 
 ## Local setup
 
-Prerequisites: Docker Desktop, Python 3.11+, Node 20+.
+Prerequisites: Docker Desktop, Python 3.12+ (3.13 recommended; the ML libraries need ≥ 3.12), Node 22+.
 
 ```bash
 # 1. Database (Postgres + pgvector, on host port 5433)
@@ -88,10 +89,47 @@ This replaces your data, so the UI asks you to confirm first.
 `backend/notebooks/feature_check.ipynb` shows the daily feature table for all demo users
 and checks that the planted patterns are visible in it (the Phase 2 checkpoint).
 
+## How the twin thinks (Phase 3)
+
+A pipeline runs **nightly at 02:00**, on **Update now** (dashboard), and after demo seeding.
+For each user with 3 or more days of data it runs: features → patterns → anomalies →
+models + tomorrow's predictions + SHAP → resolve past predictions + accuracy → traits →
+profile. Each run is logged in `job_runs`. A Postgres lock per user means runs never
+overlap, and a failing step doesn't stop the others.
+
+| Piece | How |
+|---|---|
+| **Patterns** (`ml/patterns.py`) | Spearman ρ for every feature/target pair at lag 0/1/2. Benjamini–Hochberg across all tests; keep \|ρ\| ≥ 0.4, adjusted p ≤ 0.05, n ≥ 10; rank by \|ρ\|·√n; median-split effect size. Leaky and trivial pairs are never tested. |
+| **Insight wording** | The LLM rewords a fixed template. Code then checks that every number matches the evidence and that no causal claim was added; otherwise the template is kept. |
+| **Anomalies** (`ml/anomaly.py`) | 14-day personal baseline, \|z\| ≥ 2 spikes, 3+ day streaks, plus an Isolation Forest for unusual combinations. |
+| **Predictions** (`ml/predict.py`) | Tomorrow's mood and energy plus each planned task's completion chance. Inputs are *known tonight* or *plan-able* (tonight's sleep, tomorrow's plans, your typical day). Models learn the deviation from your 4-week norm. The ladder is average → Ridge/logistic → XGBoost, and a model is used only if it beats the norm by 5% over 21+ unseen days. |
+| **SHAP** (`ml/explain.py`) | Top 3 reasons per prediction; reasons under 0.05 points are not shown. |
+| **Traits** (`ml/traits.py`) | Chronotype, optimism bias, planner, consistency, stress triggers, best conditions. The quiz is used until 14 days of data; confidence grows with days. |
+| **Accuracy** (`ml/accuracy.py`) | Hit = within 0.5 (or the right task outcome). Rolling 14-day hit rate, shown next to the 7-day-mean baseline's own hit rate. |
+
+### Evaluation (against planted ground truth)
+
+```bash
+cd backend
+python -m app.ml.evaluate          # 34 users + 10 noise users, about 5 minutes
+```
+
+| Metric | Result | Plan target |
+|---|---|---|
+| Pattern recall@5 | ~80% of 67 planted | ≥ 80% |
+| False insights per noise user | max 1, mean 0.09 | 0–1 |
+| Twin MAE vs 7-day mean (14 → 60 days) | 4–5% better at every point | beats the baseline |
+| Task completion AUC | ~0.6 | (reported) |
+| Chronotype from data | ~70% correct | (reported) |
+
+`backend/notebooks/evaluation.ipynb` has the charts. A quick version runs in CI
+(`tests/test_evaluation.py`) and fails the build if recall drops below 80%, a noise user gets
+more than one insight, or the twin stops beating the baseline.
+
 ## Tests
 
 ```bash
-cd backend && pytest              # 84 tests against a real Postgres (twin_test DB), no API calls
+cd backend && pytest              # 130+ tests against a real Postgres (twin_test DB), no API calls
 ruff check . && ruff format --check .
 cd frontend && npm run lint && npx tsc --noEmit && npm run build
 ```
@@ -112,13 +150,14 @@ The backend tests include:
 Tests always use the fake LLM and fake embeddings, so they never need an API key.
 CI (GitHub Actions) runs all of the above on every push and pull request.
 
-## Known limitations (Phase 2)
+## Known limitations
 
 - A task planned "for tomorrow" in chat is put on today's date in the card. Switch the card to the
   right day, or log it on the Log page.
 - The chat page loads the latest 100 messages. Older history is kept and used for memory, but isn't
   shown yet.
 - The chat rate limiter is in-memory, per server process (fine for one instance).
+- Task completion is hard to predict in advance (AUC ~0.6); the twin falls back to your personal completion rate unless a model is significantly better.
 - Reply speed depends on OpenAI. Measured here: first word after about 3–5 s.
 
 ## Security and privacy notes
@@ -149,6 +188,11 @@ CI (GitHub Actions) runs all of the above on every push and pull request.
 | PATCH / DELETE | `/decisions/{id}` | Rate the outcome (1–5) / remove |
 | GET / PUT | `/privacy/consents` | Per-source learning consent |
 | POST | `/demo/seed` | Replace your data with a synthetic persona (when `DEMO_ENABLED=true`) |
+| GET | `/dashboard` | Accuracy, tomorrow's predictions, insights, traits, charts |
+| GET | `/insights` | Active patterns and anomalies with their evidence |
+| GET | `/predictions/tomorrow` · `/predictions/pending` | Predictions with SHAP reasons / ones to confirm |
+| POST | `/predictions/{id}/confirm` | Real value (1–5, or 1/0 for tasks), updates accuracy |
+| POST | `/jobs/retrain` · GET `/jobs/last` | Run the pipeline now / last run |
 | GET | `/health` | Liveness, database and embedding-model status |
 
 Interactive docs: http://localhost:8000/docs

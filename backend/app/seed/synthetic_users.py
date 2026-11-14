@@ -92,6 +92,7 @@ class Generated:
     activities: list[dict] = field(default_factory=list)
     messages: list[dict] = field(default_factory=list)
     decisions: list[dict] = field(default_factory=list)
+    tomorrow: list[dict] = field(default_factory=list)  # planned tasks, not history
 
     def truth(self) -> dict:
         a = self.archetype
@@ -265,11 +266,23 @@ def simulate(
             }
         )
 
-        # ---- activities (completion depends on focus, except for the noise control) ----
-        p_done = 0.75 if noise else float(np.clip(0.55 + 0.12 * (latent["focus"] - 3), 0.1, 0.95))
+        # ---- activities ----
+        # Completion of a planned task depends on the day's focus, and (knowable in advance)
+        # on the task's length and whether it sits near the person's peak hours.
+        # No extra random draws here, so all other generated values stay identical.
+        p_focus = 0.55 + 0.12 * (latent["focus"] - 3)
+        n_tasks = sum(1 for s in sessions if s["task"])  # an overloaded plan gets done less
         for s in sorted(sessions, key=lambda s: s["start"]):
             c = s["cat"]
             planned = bool(s["task"] and rng.random() < arch.planner_share)
+            p_task = (
+                p_focus
+                + 0.15
+                - 0.25 * (s["dur"] / 60 - 1)  # longer tasks
+                - 0.08 * max(0, n_tasks - 2)  # busy days
+                - 0.06 * abs(s["start"] - arch.peak_hour)  # far from peak hours
+            )
+            p_done = 0.75 if noise else float(np.clip(p_task, 0.08, 0.95))
             completed = (rng.random() < p_done) if planned else True
             planned_min = (
                 _round5(s["dur"] * arch.optimism * rng.normal(1, 0.08)) if planned else None
@@ -330,6 +343,25 @@ def simulate(
                     "created_at": datetime.combine(d, time(20, 0), tzinfo=UTC),
                 }
             )
+    # A few tasks planned for tomorrow, so the twin has something to predict. Separate rng
+    # stream: the history above is unchanged by this.
+    trng = np.random.default_rng(seed + 99_999)
+    task_cats = [c for c in arch.cats if c.task]
+    for c in task_cats[: int(trng.integers(1, 3)) + 1]:
+        dur = float(_round5(trng.normal(c.session, 0.2 * c.session)))
+        gen.tomorrow.append(
+            {
+                "date": end + timedelta(days=1),
+                "category": c.name,
+                "title": f"{c.name} session",
+                "start_time": _hour_to_time(trng.uniform(*c.hours)),
+                "duration_min": None,
+                "planned": True,
+                "completed": False,
+                "planned_min": _round5(dur * arch.optimism),
+                "source": "manual",
+            }
+        )
     return gen
 
 
@@ -438,6 +470,8 @@ def write_generated(
         db.execute(insert(Checkin), [uid | c for c in gen.checkins])
     if gen.activities:
         db.execute(insert(Activity), [uid | x for x in gen.activities])
+    if gen.tomorrow:
+        db.execute(insert(Activity), [uid | x for x in gen.tomorrow])
     if gen.decisions:
         db.execute(insert(Decision), [uid | x for x in gen.decisions])
     if gen.messages:
@@ -482,8 +516,24 @@ def _upsert_demo_user(db: Session, email: str, name: str) -> User:
     return user
 
 
+def _run_pipeline(user_id, backtest_days: int) -> str:
+    from app.db import SessionLocal
+    from app.ml.pipeline import run_user
+
+    try:
+        return run_user(SessionLocal, user_id, trigger="seed", backtest_days=backtest_days).status
+    except Exception as exc:  # noqa: BLE001
+        log.warning("pipeline failed for %s: %s", user_id, exc)
+        return "error"
+
+
 def create_demo_users(
-    db: Session, *, generated: int = 30, days: int = 90, embed: bool = True
+    db: Session,
+    *,
+    generated: int = 30,
+    days: int = 90,
+    embed: bool = True,
+    pipeline: bool = True,
 ) -> list[dict]:
     end = date.today()
     summary = []
@@ -492,6 +542,8 @@ def create_demo_users(
         user = _upsert_demo_user(db, f"{key}@{DEMO_DOMAIN}", p["name"])
         gen = simulate(arch, patterns, days=days, end=end, seed=seed, noise=noise)
         counts = write_generated(db, user, gen, embed=embed)
+        if pipeline:
+            counts["pipeline"] = _run_pipeline(user.id, backtest_days=14)
         summary.append(
             {"email": user.email, "name": user.name, "persona": key, "truth": gen.truth(), **counts}
         )
@@ -504,6 +556,8 @@ def create_demo_users(
         user = _upsert_demo_user(db, email, name)
         gen = simulate(arch, patterns, days=days, end=end, seed=seed, noise_sd=noise_sd)
         counts = write_generated(db, user, gen, embed=embed, noise_sd=noise_sd)
+        if pipeline:
+            counts["pipeline"] = _run_pipeline(user.id, backtest_days=7)
         summary.append(
             {"email": email, "name": name, "persona": None, "truth": gen.truth(), **counts}
         )
@@ -518,12 +572,21 @@ def main() -> None:
     ap.add_argument("--generated", type=int, default=30, help="number of varied users (default 30)")
     ap.add_argument("--days", type=int, default=90, help="days of history per user (default 90)")
     ap.add_argument("--no-embed", action="store_true", help="skip message embeddings")
+    ap.add_argument(
+        "--no-pipeline",
+        action="store_true",
+        help="don't run the twin pipeline after seeding (faster)",
+    )
     args = ap.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     with SessionLocal() as db:
         summary = create_demo_users(
-            db, generated=args.generated, days=args.days, embed=not args.no_embed
+            db,
+            generated=args.generated,
+            days=args.days,
+            embed=not args.no_embed,
+            pipeline=not args.no_pipeline,
         )
     out = BACKEND_DIR / "data" / "ground_truth.json"
     out.parent.mkdir(exist_ok=True)

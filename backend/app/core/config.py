@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     # Synthetic demo data (/demo/seed). Keep off in production unless demoing.
     demo_enabled: bool = False
 
+    # Nightly ML pipeline (APScheduler inside the API process)
+    scheduler_enabled: bool = True
+    nightly_hour: int = 2  # server local time
+    model_store_dir: str = str(BACKEND_DIR / "model_store")
+    model_versions_kept: int = 3
+    demo_backtest_days: int = 14  # back-tested history created after /demo/seed
+    # Insight sentences: LLM rewording of the evidence (numbers are verified against it),
+    # falling back to a fixed template if the LLM is unavailable or invents a number.
+    insight_llm_wording: bool = True
+
     app_env: str = "development"  # development / test / production
 
     @property
