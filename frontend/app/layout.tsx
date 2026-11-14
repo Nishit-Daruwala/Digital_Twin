@@ -1,19 +1,30 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import { Providers } from "@/components/providers";
 import "./globals.css";
 
-const sans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+// IBM Plex is self-hosted (app/fonts, SIL OFL 1.1, see OFL-LICENSE.txt) so builds never
+// download from Google Fonts. next/font/google broke CI builds when Google returned a
+// font URL Next 14's loader couldn't parse.
+const sans = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-sans-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-latin-500-normal.woff2", weight: "500", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-latin-600-normal.woff2", weight: "600", style: "normal" },
+    { path: "./fonts/ibm-plex-sans-latin-700-normal.woff2", weight: "700", style: "normal" },
+  ],
   variable: "--font-sans",
   display: "swap",
+  fallback: ["system-ui", "Segoe UI", "Arial", "sans-serif"],
 });
-const mono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+const mono = localFont({
+  src: [
+    { path: "./fonts/ibm-plex-mono-latin-400-normal.woff2", weight: "400", style: "normal" },
+    { path: "./fonts/ibm-plex-mono-latin-500-normal.woff2", weight: "500", style: "normal" },
+  ],
   variable: "--font-mono",
   display: "swap",
+  fallback: ["ui-monospace", "Consolas", "monospace"],
 });
 
 export const metadata: Metadata = {
