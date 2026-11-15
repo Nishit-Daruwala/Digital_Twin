@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -16,11 +17,11 @@ import { cn } from "@/lib/utils";
 import type { Me } from "@/lib/types";
 
 const NAV: { href: string; label: string; icon: LucideIcon }[] = [
-  { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/checkin", label: "Check-in", icon: SunMedium },
   { href: "/log", label: "Log", icon: ListChecks },
+  { href: "/chat", label: "Chat", icon: MessageSquare },
   { href: "/decisions", label: "Decisions", icon: Signpost },
-  { href: "/dashboard", label: "Dashboard", icon: LayoutGrid },
   { href: "/whatif", label: "What-if", icon: FlaskConical },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
@@ -44,7 +45,7 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r bg-card md:flex">
         <div className="px-6 pb-6 pt-7">
-          <Wordmark />
+          <HomeLink />
         </div>
         <nav aria-label="Main" className="flex flex-1 flex-col gap-0.5 px-3">
           {NAV.map(({ href, label, icon: Icon }) => {
@@ -94,7 +95,7 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
 
       {/* Mobile header */}
       <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b bg-card/95 px-4 backdrop-blur md:hidden">
-        <Wordmark />
+        <HomeLink />
         <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary-soft font-mono text-[11px] font-medium text-primary">
           {initials(me.user.name)}
         </div>
@@ -141,22 +142,44 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
   );
 }
 
-/** Brand mark: two offset bars, you and your twin. */
+/** Brand mark (icon only): you and your twin. Used where the full logo would be too small. */
 export function Logo({ className }: { className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden className={cn("h-6 w-6", className)}>
-      <rect x="3" y="3" width="7.5" height="18" rx="1.5" className="fill-foreground" />
-      <rect x="13.5" y="6" width="7.5" height="15" rx="1.5" className="fill-primary" />
-    </svg>
+    <Image
+      src="/twin-mark.png"
+      alt=""
+      aria-hidden
+      width={178}
+      height={128}
+      className={cn("h-8 w-8 shrink-0 object-contain", className)}
+    />
+  );
+}
+
+/** The wordmark as a link home (the Dashboard). */
+function HomeLink() {
+  return (
+    <Link
+      href="/dashboard"
+      aria-label="Twin, go to Dashboard"
+      className="inline-flex rounded-md transition-opacity hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+    >
+      <Wordmark />
+    </Link>
   );
 }
 
 export function Wordmark({ className }: { className?: string }) {
   return (
-    <span className={cn("flex items-center gap-2.5", className)}>
-      <Logo />
-      <span className="text-[19px] font-semibold tracking-tight">Twin</span>
-    </span>
+    <Image
+      src="/twin-logo.png"
+      alt="Twin"
+      width={434}
+      height={128}
+      priority
+      // self-start: in a column flexbox the image would otherwise stretch to full width
+      className={cn("h-8 w-auto shrink-0 self-start object-contain", className)}
+    />
   );
 }
 
