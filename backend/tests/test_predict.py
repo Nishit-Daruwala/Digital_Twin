@@ -8,14 +8,14 @@ import pandas as pd
 from app.ml import predict as P
 from app.ml.explain import explain
 from app.ml.features import build_features
-from app.seed.synthetic_users import persona_spec, simulate
+from app.seed.synthetic_users import persona_spec, persona_strength, simulate
 
 END = date(2026, 11, 14)
 
 
 def persona_features(key: str, days: int = 90):
     a, p, noise, s = persona_spec(key)
-    gen = simulate(a, p, days=days, end=END, seed=s, noise=noise)
+    gen = simulate(a, p, days=days, end=END, seed=s, noise=noise, strength=persona_strength(key))
     ck = pd.DataFrame(gen.checkins)[["date", "sleep_hours", "mood", "energy", "stress", "focus"]]
     ms = pd.DataFrame(
         [{"date": m["created_at"].date(), "sentiment": m["sentiment"]} for m in gen.messages]

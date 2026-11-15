@@ -50,26 +50,33 @@ DEMO_DOMAIN = "demo.example.com"
 STRESS_VOLATILITY = 1.3
 DEMO_PASSWORD = "twin-demo-2026"
 
-# The plan's personas (fixed patterns) plus the pure-noise control. Each demo seed is a
-# typical draw where the planted patterns are clearly visible (90-day correlations vary by
-# about +-0.1 between seeds); tests/test_seed.py also checks the average over many seeds.
+# The plan's personas (fixed patterns) plus the pure-noise control. They are showcases:
+# - "strength" scales the planted effects so they stand out with 60 days of data (at 1.0 the
+#   founder's two mood effects were found on only ~1 in 3 seeds). The evaluation harness uses
+#   normal-strength users, so the reported metrics are not inflated by this.
+# - the data depends on the weekday the seed ends on (weekends are simulated differently), so
+#   each seed was chosen so the planted patterns are found ending on ANY weekday, for 60 and
+#   90 days; tests/test_seed.py checks this, and the average over many seeds.
 PERSONAS: dict[str, dict] = {
     "student": {
         "archetype": "student",
         "name": "Asha (student)",
-        "seed": 1001,
+        "seed": 2000,
+        "strength": 1.3,
         "patterns": ["sleep_low_next_focus"],
     },
     "developer": {
         "archetype": "developer",
         "name": "Mateo (developer)",
-        "seed": 1002,
+        "seed": 2000,
+        "strength": 1.5,
         "patterns": ["meetings_energy", "monday_mood"],
     },
     "founder": {
         "archetype": "founder",
         "name": "Lin (founder)",
-        "seed": 1403,
+        "seed": 2011,
+        "strength": 1.8,
         "patterns": ["stress_leads_mood", "exercise_next_mood"],
     },
     "noise": {
@@ -172,6 +179,7 @@ def simulate(
     noise: bool = False,
     noise_sd: float = 0.45,
     skip_p: float = 0.06,
+    strength: float = 1.0,
 ) -> Generated:
     rng = np.random.default_rng(seed)
     gen = Generated(arch, patterns, noise, seed)
@@ -241,7 +249,7 @@ def simulate(
         deltas: dict[str, float] = {}
         for p in patterns:
             for k, v in p.apply(history, day, arch).items():
-                deltas[k] = deltas.get(k, 0.0) + v
+                deltas[k] = deltas.get(k, 0.0) + v * strength
         for m in ("mood", "energy", "stress", "focus"):
             latent[m] = (
                 arch.base[m]
@@ -408,6 +416,10 @@ def persona_spec(key: str) -> tuple[Archetype, list[Pattern], bool, int]:
     )
 
 
+def persona_strength(key: str) -> float:
+    return float(PERSONAS[key].get("strength", 1.0))
+
+
 def random_spec(index: int, base_seed: int = 5000) -> tuple[Archetype, list[Pattern], int, float]:
     """A varied person: archetype by index, jittered routine, 2-3 random compatible patterns."""
     seed = base_seed + index
@@ -500,7 +512,15 @@ def seed_persona_into_user(
 ) -> dict:
     """Used by POST /demo/seed: give the current account a persona's history."""
     arch, patterns, noise, seed = persona_spec(persona)
-    gen = simulate(arch, patterns, days=days, end=date.today(), seed=seed, noise=noise)
+    gen = simulate(
+        arch,
+        patterns,
+        days=days,
+        end=date.today(),
+        seed=seed,
+        noise=noise,
+        strength=persona_strength(persona),
+    )
     return write_generated(db, user, gen, embed=embed)
 
 
@@ -540,7 +560,15 @@ def create_demo_users(
     for key, p in PERSONAS.items():
         arch, patterns, noise, seed = persona_spec(key)
         user = _upsert_demo_user(db, f"{key}@{DEMO_DOMAIN}", p["name"])
-        gen = simulate(arch, patterns, days=days, end=end, seed=seed, noise=noise)
+        gen = simulate(
+            arch,
+            patterns,
+            days=days,
+            end=end,
+            seed=seed,
+            noise=noise,
+            strength=persona_strength(key),
+        )
         counts = write_generated(db, user, gen, embed=embed)
         if pipeline:
             counts["pipeline"] = _run_pipeline(user.id, backtest_days=14)

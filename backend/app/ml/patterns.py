@@ -45,7 +45,8 @@ MIN_RHO = 0.4
 MAX_P_ADJ = 0.05
 MIN_N = 10
 MIN_GROUP = 5  # each side of a split needs this many days...
-MIN_GROUP_SHARE = 0.15  # ...and this share of them for continuous splits
+MIN_GROUP_SHARE = 0.20  # ...and this share of them for continuous splits (1-5 ratings bunch
+# around one value, so a lopsided "mood above 2" split of 49 vs 10 days is a chance finding)
 
 
 @dataclass
@@ -122,18 +123,19 @@ def _split(x: pd.Series, y: pd.Series, target: str, r: float):
     ok = x.notna() & y.notna()
     x, y = x[ok], y[ok]
     binary = set(x.unique()) <= {0, 1}
-    threshold = 0.5 if binary else float(x.median())
-    if not binary and base_is_minutes(x.name) and (x == 0).mean() >= 0.3:
-        threshold = 0.0  # often zero: "any Exercise" vs "none" reads better than a median
-    high = x > threshold
-    if not binary and (high.sum() < MIN_GROUP or (~high).sum() < MIN_GROUP):  # ties
-        # many ties at the median (e.g. lots of zero-minute days): split at zero instead
-        threshold = 0.0
-        high = x > 0
     # Rare extremes of a continuous feature mislead (a "mood above 3" group of 4 days);
     # 10% for continuous splits let such chance findings through in tests. On/off flags
     # such as weekdays are 1/7 of days by design, so they get 10%.
     need = max(MIN_GROUP, (0.10 if binary else MIN_GROUP_SHARE) * len(x))
+    if binary:
+        threshold = 0.5
+    elif base_is_minutes(x.name) and (x == 0).mean() >= 0.3:
+        threshold = 0.0  # often zero: "any Exercise" vs "none" reads better than a median
+    else:
+        threshold = _balanced_threshold(x, need)
+        if threshold is None:
+            return None
+    high = x > threshold
     if high.sum() < need or (~high).sum() < need:
         return None
     m_hi, m_lo = float(y[high].mean()), float(y[~high].mean())
@@ -148,6 +150,30 @@ def _split(x: pd.Series, y: pd.Series, target: str, r: float):
         "n_worse": int(high.sum() if worse_high else (~high).sum()),
         "n_other": int((~high).sum() if worse_high else high.sum()),
     }
+
+
+def _balanced_threshold(x: pd.Series, need: float) -> float | None:
+    """Most even split "x > t" whose groups both have at least `need` days.
+
+    1-5 ratings tie heavily at the median: stress {3: 28, 4: 25, 5: 5} split at "> 4" gives
+    5 vs 53 days and a real pattern would be dropped, while "4 or more" (> 3) gives 30 vs 28.
+    """
+    med = float(x.median())
+    options = {med}
+    lower = x[x < med]
+    if len(lower):
+        options.add(float(lower.max()))  # "at or above the median"
+    if (x == 0).any():
+        options.add(0.0)  # "any" vs "none"
+    best: tuple[int, float] | None = None
+    for t in sorted(options):
+        hi = int((x > t).sum())
+        lo = len(x) - hi
+        if min(hi, lo) < need:
+            continue
+        if best is None or abs(hi - lo) < best[0]:
+            best = (abs(hi - lo), t)
+    return None if best is None else best[1]
 
 
 def base_is_minutes(column) -> bool:

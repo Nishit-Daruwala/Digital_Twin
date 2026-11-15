@@ -1,14 +1,21 @@
 """Synthetic data: determinism, planted patterns visible in the features, demo endpoint."""
 
-from datetime import date
+from datetime import date, timedelta
 
 import pandas as pd
 import pytest
 
 from app.core.config import settings
 from app.ml.features import TARGETS, build_features
+from app.ml.patterns import discover
 from app.seed.patterns import PATTERNS
-from app.seed.synthetic_users import PERSONAS, persona_spec, random_spec, simulate
+from app.seed.synthetic_users import (
+    PERSONAS,
+    persona_spec,
+    persona_strength,
+    random_spec,
+    simulate,
+)
 from tests.conftest import auth, register
 
 END = date(2026, 11, 14)
@@ -30,7 +37,10 @@ def rho(f: pd.DataFrame, feature: str, target: str, lag: int = 0) -> float:
 
 def persona_features(key: str, days: int = 90):
     arch, patterns, noise, seed = persona_spec(key)
-    return features_of(simulate(arch, patterns, days=days, end=END, seed=seed, noise=noise))
+    gen = simulate(
+        arch, patterns, days=days, end=END, seed=seed, noise=noise, strength=persona_strength(key)
+    )
+    return features_of(gen)
 
 
 def test_generation_is_deterministic():
@@ -90,6 +100,34 @@ def test_planted_patterns_are_strong_across_seeds(persona):
             values.append(rho(f, feature, target, lag) * sign)
         assert min(values) > 0.2, (feature, values)  # always clearly present
         assert sum(values) / len(values) >= 0.4, (feature, values)
+
+
+@pytest.mark.parametrize("persona", list(PERSONAS))
+def test_persona_insights_do_not_depend_on_the_weekday(persona):
+    """POST /demo/seed ends on *today*, and weekends are simulated differently, so the data
+    differs by weekday. The twin must find each persona's planted patterns (and nothing for
+    the noise control) whichever weekday the 60-day history ends on."""
+    arch, patterns, noise, seed = persona_spec(persona)
+    cats = [c.name for c in arch.cats]
+    monday = date(2026, 11, 9)
+    for k in range(7):
+        gen = simulate(
+            arch,
+            patterns,
+            days=60,
+            end=monday + timedelta(days=k),
+            seed=seed,
+            noise=noise,
+            strength=persona_strength(persona),
+        )
+        found = discover(features_of(gen), cats)
+        if noise:
+            assert found == [], (k, [p.key for p in found])
+            continue
+        top = {(p.feature, p.target, p.lag, p.direction) for p in found[:5]}
+        for t in gen.truth()["patterns"]:
+            want = (t["feature"], t["target"], t["lag"], t["direction"])
+            assert want in top, (persona, f"ends on weekday {k}", want, sorted(top))
 
 
 def test_noise_control_has_no_strong_correlations():

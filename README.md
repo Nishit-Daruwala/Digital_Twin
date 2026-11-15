@@ -111,20 +111,25 @@ overlap, and a failing step doesn't stop the others.
 
 ```bash
 cd backend
-python -m app.ml.evaluate          # 34 users + 10 noise users, about 5 minutes
+python -m app.ml.evaluate          # 34 users + 10 noise users, about 3 minutes
 ```
 
 | Metric | Result | Plan target |
 |---|---|---|
-| Pattern recall@5 | ~80% of 67 planted | ≥ 80% |
+| Pattern recall@5 | 84% of 67 planted | ≥ 80% |
 | False insights per noise user | max 1, mean 0.09 | 0–1 |
-| Twin MAE vs 7-day mean (14 → 60 days) | 4–5% better at every point | beats the baseline |
+| Twin MAE vs 7-day mean (14 → 60 days) | 4–6% better at every point | beats the baseline |
 | Task completion AUC | ~0.6 | (reported) |
 | Chronotype from data | ~70% correct | (reported) |
 
 `backend/notebooks/evaluation.ipynb` has the charts. A quick version runs in CI
 (`tests/test_evaluation.py`) and fails the build if recall drops below 80%, a noise user gets
 more than one insight, or the twin stops beating the baseline.
+
+The demo personas (`/demo/seed`, `python -m app.seed.synthetic_users`) are showcases: their
+planted effects are scaled up (`strength` in `PERSONAS`) so the patterns are clearly visible after
+60 days, and their seeds are chosen so the twin finds them whichever weekday the history ends on
+(`tests/test_seed.py` checks every weekday). The numbers above use normal-strength users.
 
 ## Tests
 
