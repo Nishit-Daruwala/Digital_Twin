@@ -103,7 +103,7 @@ export function TrendChart({ data }: { data: SeriesPoint[] }) {
   return (
     <ChartCard
       title="Mood & energy"
-      subtitle={`Last ${data.length} check-ins, 1–5`}
+      subtitle={`Last ${data.length} days with a check-in · daily average, 1–5`}
       legend={[{ label: "Mood", color: VIZ.mood }, { label: "Energy", color: VIZ.energy }]}
       table={<SimpleTable head={["Day", "Mood", "Energy"]}
                           rows={data.map((d) => [shortDate(d.date), d.mood ?? "–", d.energy ?? "–"])} />}

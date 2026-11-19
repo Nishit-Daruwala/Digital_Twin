@@ -12,6 +12,7 @@ from datetime import date, timedelta
 
 from pydantic import ValidationError
 
+from app.ml.intraday import SLOTS
 from app.schemas.chat import CardActivity, CardCheckin, CardDecision, ExtractionCard
 
 
@@ -64,6 +65,7 @@ def sanitize(
             stress=_int_1_5(raw.get("stress")),
             focus=_int_1_5(raw.get("focus")),
             sleep_hours=_sleep(raw.get("sleep_hours")),
+            slot=raw.get("part_of_day") if raw.get("part_of_day") in SLOTS else None,
         )
 
     activities: list[CardActivity] = []

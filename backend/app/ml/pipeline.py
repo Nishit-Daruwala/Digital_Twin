@@ -24,7 +24,7 @@ import pandas as pd
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app.ml import accuracy, anomaly, patterns, predict, store
+from app.ml import accuracy, anomaly, intraday, patterns, predict, store
 from app.ml.explain import explain
 from app.ml.features import build_features, load_frames
 from app.ml.traits import compute_traits, quiz_prior
@@ -110,23 +110,25 @@ def _run_locked(session_factory, user_id, trigger, today, backtest_days) -> JobR
             ctx = _step(steps, "features", lambda: _load(db, user_id, today))
             if ctx is None:
                 raise RuntimeError("feature step failed")
-            f, acts, categories, data_days = ctx
+            f, acts, categories, data_days, ck = ctx
+            rhythm = intraday.learn(ck)
             if data_days < MIN_DAYS:
                 status = "skipped"
                 steps["features"]["note"] = f"needs {MIN_DAYS}+ days of data (has {data_days})"
             else:
                 _step(steps, "patterns", lambda: _patterns(db, user_id, f, categories, today))
                 _step(steps, "anomalies", lambda: _anomalies(db, user_id, f, today))
+                _step(steps, "rhythm", lambda: _rhythm(db, user_id, ck, rhythm, today))
                 _step(
                     steps,
                     "predictions",
-                    lambda: _predictions(db, user_id, f, acts, categories, today),
+                    lambda: _predictions(db, user_id, f, acts, categories, today, rhythm),
                 )
                 if backtest_days:
                     _step(
                         steps,
                         "backtest",
-                        lambda: _backtest(db, user_id, f, categories, today, backtest_days),
+                        lambda: _backtest(db, user_id, f, ck, today, backtest_days),
                     )
                 _step(steps, "accuracy", lambda: _accuracy(db, user_id, today))
                 _step(steps, "traits", lambda: _traits(db, user_id, f, acts, categories, data_days))
@@ -181,7 +183,7 @@ def _load(db: Session, user_id: uuid.UUID, today: date):
     checkins, acts, messages, categories = load_frames(db, user_id, until=today)
     f = build_features(checkins, acts, messages, categories)
     data_days = int((f["imputed"] == 0).sum()) if not f.empty else 0
-    return f, acts, categories, data_days
+    return f, acts, categories, data_days, checkins
 
 
 def _upsert_insight(db, user_id, key, type_, text_, evidence, confidence, rank, today):
@@ -272,6 +274,41 @@ def _anomalies(db: Session, user_id, f, today) -> dict:
     return {"found": len(found)}
 
 
+def _rhythm(db: Session, user_id, ck, rhythm: dict, today) -> dict:
+    """Time-of-day statements ("energy is higher in the morning than in the evening")."""
+    found = intraday.insights(ck)
+    keys = {f"rhythm:{r['metric']}" for r in found}
+    for row in db.scalars(
+        select(Insight).where(Insight.user_id == user_id, Insight.type == "rhythm", Insight.active)
+    ):
+        if row.key not in keys:
+            row.active = False
+    for r in found:
+        evidence = {k: v for k, v in r.items() if k not in ("text", "confidence")}
+        evidence["offsets"] = {
+            s: v["offset"] for s, v in rhythm["metrics"].get(r["metric"], {}).items()
+        }
+        _upsert_insight(
+            db,
+            user_id,
+            f"rhythm:{r['metric']}",
+            "rhythm",
+            r["text"],
+            evidence,
+            r["confidence"],
+            r["diff"] * r["n"] ** 0.5,
+            today,
+        )
+    db.commit()
+    return {"found": len(found), "days_with_2plus": rhythm["days_multi"]}
+
+
+def _time_of_day(value: float, rhythm: dict, target: str) -> dict | None:
+    """Per-slot forecast, only once the rhythm has been seen (days with 2+ check-ins)."""
+    tod = intraday.forecast(value, rhythm, target)
+    return tod if tod["learned"] else None
+
+
 def _planned_tomorrow(db: Session, user_id, tomorrow, allowed: bool) -> pd.DataFrame:
     cols = ["id", "category", "title", "planned_min", "start_time"]
     if not allowed:
@@ -318,7 +355,7 @@ def _upsert_prediction(db, user_id, for_date, target, task_id, **vals):
     return row
 
 
-def _predictions(db: Session, user_id, f, acts, categories, today) -> dict:
+def _predictions(db: Session, user_id, f, acts, categories, today, rhythm=None) -> dict:
     from app.api.privacy import consent_map
     from app.seed.patterns import slug
 
@@ -362,6 +399,9 @@ def _predictions(db: Session, user_id, f, acts, categories, today) -> dict:
             for k, v in plan.items()
             if sources.get(k) in ("planned", "set") or k == "next_sleep_hours"
         }
+        tod = _time_of_day(value, rhythm or {}, target)
+        if tod:
+            ex["time_of_day"] = tod
         _upsert_prediction(
             db,
             user_id,
@@ -422,7 +462,7 @@ def _predictions(db: Session, user_id, f, acts, categories, today) -> dict:
     return out
 
 
-def _backtest(db: Session, user_id, f, categories, today, days: int) -> dict:
+def _backtest(db: Session, user_id, f, ck, today, days: int) -> dict:
     """Walk-forward history for demo users: for each of the last `days` days, train only on
     what was known the evening before and predict that day; the answer is already known.
     Marked backtest=True so the UI can say so."""
@@ -434,6 +474,10 @@ def _backtest(db: Session, user_id, f, categories, today, days: int) -> dict:
         if len(past) < MIN_DAYS or actual_row.empty or int(actual_row["imputed"].iloc[0]):
             continue
         plan, _ = predict.assumed_plan(past, d)
+        # the rhythm as known the evening before (no peeking at that day's check-ins)
+        rhythm_d = (
+            intraday.learn(ck[pd.to_datetime(ck["date"]) < pd.Timestamp(d)]) if len(ck) else {}
+        )
         for target in predict.REG_TARGETS:
             actual = actual_row[target].iloc[0]
             if target not in past or pd.isna(actual):
@@ -441,6 +485,10 @@ def _backtest(db: Session, user_id, f, categories, today, days: int) -> dict:
             t = predict.train_regression(past, target)
             value = predict.predict_value(t, predict.tonight_row(past, plan, t.features))
             lo, hi = predict.interval(t, value)
+            ex = {"model": t.kind, "backtest": True, "contributors": []}
+            tod = _time_of_day(value, rhythm_d, target)
+            if tod:
+                ex["time_of_day"] = tod
             _upsert_prediction(
                 db,
                 user_id,
@@ -453,7 +501,7 @@ def _backtest(db: Session, user_id, f, categories, today, days: int) -> dict:
                 high=round(hi, 2),
                 model_kind=t.kind,
                 backtest=True,
-                explanation={"model": t.kind, "backtest": True, "contributors": []},
+                explanation=ex,
                 actual=float(actual),
             )
             made += 1

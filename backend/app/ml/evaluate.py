@@ -12,6 +12,9 @@ Metrics
 - Learning curve: MAE of the twin vs the "7-day mean" baseline after 14..60 days of data.
 - Task completion: AUC of the completion model on later days.
 - Traits: chronotype vs truth, optimism-bias error.
+- Time of day (Phase 3.5): is the learned best slot for energy the planted one; are rhythm
+  statements right (and absent for noise users); and does the rhythm improve predicting a
+  check-in from the same day's other check-ins (rhythm learned on earlier days only).
 
 CLI:  python -m app.ml.evaluate                 (4 personas + 30 users + 10 noise users)
       python -m app.ml.evaluate --quick         (what CI runs)
@@ -28,6 +31,7 @@ from datetime import date, timedelta
 import numpy as np
 import pandas as pd
 
+from app.ml import intraday
 from app.ml import patterns as pat
 from app.ml import predict as P
 from app.ml.features import build_features
@@ -51,7 +55,9 @@ class User:
 
 
 def features(gen: Generated, until: date | None = None) -> pd.DataFrame:
-    ck = pd.DataFrame(gen.checkins)[["date", "sleep_hours", "mood", "energy", "stress", "focus"]]
+    ck = pd.DataFrame(gen.checkins)[
+        ["date", "slot", "sleep_hours", "mood", "energy", "stress", "focus"]
+    ]
     ac = pd.DataFrame(gen.activities)
     ms = pd.DataFrame(
         [{"date": m["created_at"].date(), "sentiment": m["sentiment"]} for m in gen.messages],
@@ -213,6 +219,48 @@ def trait_metrics(users: list[User]) -> dict:
     }
 
 
+def rhythm_metrics(users: list[User]) -> dict:
+    best, right, false_counts = [], [], {}
+    with_r, without_r = [], []
+    for u in users:
+        ck = pd.DataFrame(u.gen.checkins)
+        truth = u.gen.truth()["rhythm"]["energy"]
+        found = intraday.insights(ck)
+        if u.noise:
+            false_counts[u.name] = len(found)
+        else:
+            learned = intraday.learn(ck)["metrics"]["energy"]
+            best.append(
+                max(learned, key=lambda s: learned[s]["offset"]) == max(truth, key=truth.get)
+            )
+            e = next((f for f in found if f["metric"] == "energy"), None)
+            right.append(bool(e) and truth[e["high_slot"]] > truth[e["low_slot"]])
+        # hold-out: rhythm from the first 70% of days, scored on the rest
+        days = sorted(ck["date"].unique())
+        cut = days[int(len(days) * 0.7)]
+        rh = intraday.learn(ck[ck["date"] < cut])
+        for _, g in ck[ck["date"] >= cut].dropna(subset=["energy"]).groupby("date"):
+            if len(g) < 2:
+                continue
+            for i, row in g.iterrows():
+                others = g.drop(index=i)
+                off = others["slot"].map(lambda s, rh=rh: intraday.offset(rh, "energy", s))
+                guess = (others["energy"] - off).mean() + intraday.offset(rh, "energy", row["slot"])
+                with_r.append(abs(row["energy"] - guess))
+                without_r.append(abs(row["energy"] - others["energy"].mean()))
+    mae_w, mae_wo = float(np.mean(with_r)), float(np.mean(without_r))
+    return {
+        "best_slot_accuracy": round(float(np.mean(best)), 3) if best else None,
+        "statement_recall": round(float(np.mean(right)), 3) if right else None,
+        "false_statements": false_counts,
+        "false_statements_max": max(false_counts.values()) if false_counts else None,
+        "slot_mae_with_rhythm": round(mae_w, 3),
+        "slot_mae_without": round(mae_wo, 3),
+        "slot_improvement": round(1 - mae_w / mae_wo, 3),
+        "n_slot_checks": len(with_r),
+    }
+
+
 def run(n_generated: int = 30, n_noise: int = 10, quick: bool = False) -> dict:
     t0 = time.perf_counter()
     users = make_users(n_generated, n_noise)
@@ -225,6 +273,7 @@ def run(n_generated: int = 30, n_noise: int = 10, quick: bool = False) -> dict:
         ),
         "tasks": task_metrics(users if not quick else curve_users),
         "traits": trait_metrics(users),
+        "time_of_day": rhythm_metrics(users),
     }
     result["seconds"] = round(time.perf_counter() - t0, 1)
     return result
@@ -272,6 +321,17 @@ def main() -> None:
     print(
         f"Traits: chronotype {r['traits']['chronotype_accuracy']:.0%} correct, "
         f"optimism error {r['traits']['optimism_abs_error']}"
+    )
+    t = r["time_of_day"]
+    print(
+        f"Time of day: best energy slot {t['best_slot_accuracy']:.0%} right, rhythm statements "
+        f"{t['statement_recall']:.0%} found and right, noise users max "
+        f"{t['false_statements_max']} statements"
+    )
+    print(
+        f"  predicting a check-in from the same day: MAE {t['slot_mae_with_rhythm']:.3f} with "
+        f"rhythm vs {t['slot_mae_without']:.3f} without ({t['slot_improvement']:+.0%}), "
+        f"n={t['n_slot_checks']}"
     )
     print(f"({r['seconds']}s) -> {out}")
 

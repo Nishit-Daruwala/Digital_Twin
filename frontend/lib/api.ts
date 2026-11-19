@@ -6,6 +6,7 @@ import type {
   ChatEvent,
   ChatMessage,
   Checkin,
+  CheckinDay,
   CheckinIn,
   ConfirmResult,
   Consent,
@@ -169,7 +170,9 @@ export const api = {
   me: () => request<Me>("/me"),
   onboarding: (body: OnboardingIn) => request<TwinProfile>("/onboarding", json("POST", body)),
 
+  updateMe: (body: { timezone: string }) => request<Me>("/me", json("PATCH", body)),
   saveCheckin: (body: CheckinIn) => request<Checkin>("/checkins", json("POST", body)),
+  checkinToday: () => request<CheckinDay>("/checkins/today"),
   checkins: (from?: string, to?: string) => request<Checkin[]>(`/checkins${qs({ from, to })}`),
 
   createActivity: (body: ActivityIn) => request<Activity>("/activities", json("POST", body)),

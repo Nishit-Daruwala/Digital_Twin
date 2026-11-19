@@ -22,7 +22,9 @@ END = date(2026, 11, 14)
 
 
 def features_of(gen) -> pd.DataFrame:
-    ck = pd.DataFrame(gen.checkins)[["date", "sleep_hours", "mood", "energy", "stress", "focus"]]
+    ck = pd.DataFrame(gen.checkins)[
+        ["date", "slot", "sleep_hours", "mood", "energy", "stress", "focus"]
+    ]
     ac = pd.DataFrame(gen.activities)
     ms = pd.DataFrame(
         [{"date": m["created_at"].date(), "sentiment": m["sentiment"]} for m in gen.messages]
@@ -198,8 +200,12 @@ def test_demo_seed_replaces_only_my_data(client, user):
     me = client.get("/me", headers=h).json()
     assert me["user"]["role"] == "Developer"
     assert "Meetings" in me["profile"]["categories"]
-    assert me["profile"]["data_days"] == out["checkins"]
-    assert len(client.get("/checkins", headers=h).json()) == out["checkins"]
+    rows = client.get("/checkins", headers=h).json()
+    assert len(rows) == out["checkins"]
+    # several check-ins a day (one per slot); data_days counts days, not check-ins
+    assert me["profile"]["data_days"] == len({c["date"] for c in rows}) < out["checkins"]
+    assert len({(c["date"], c["slot"]) for c in rows}) == len(rows)
+    assert all(c["checked_at"] for c in rows)
     assert len(client.get("/chat/history?limit=200", headers=h).json()) == out["messages"]
     assert len(client.get("/decisions", headers=other).json()) == 1  # untouched
 

@@ -49,6 +49,7 @@ class AccuracyOut(BaseModel):
     n: int
     backtest_share: float = 0.0
     by_target: dict = Field(default_factory=dict)
+    by_slot: dict = Field(default_factory=dict)  # time-of-day forecasts: {accuracy, n}
 
 
 class ConfirmOut(BaseModel):
@@ -90,6 +91,7 @@ class DashboardOut(BaseModel):
     tomorrow: list[PredictionOut]
     insights: list[InsightOut]
     anomalies: list[InsightOut]
+    rhythm: list[InsightOut] = Field(default_factory=list)  # time-of-day statements
     traits: dict
     series: list[SeriesPoint]
     minutes_by_category: list[CategoryMinutes]

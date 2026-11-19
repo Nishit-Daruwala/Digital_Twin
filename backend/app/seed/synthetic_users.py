@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import BACKEND_DIR
 from app.core.security import hash_password
+from app.core.timeutil import tz_of, valid_timezone
 from app.ml.traits import quiz_prior
 from app.models import (
     CONSENT_SOURCES,
@@ -48,6 +49,21 @@ log = logging.getLogger("twin.seed")
 DEMO_DOMAIN = "demo.example.com"
 # Day-to-day stress swings more than mood/focus; this also lets stress-driven patterns show.
 STRESS_VOLATILITY = 1.3
+# Time of day (Phase 3.5): the daily check-in is usually in the person's habitual slot; on
+# some days they also do quick mood/energy check-ins in other slots. Energy follows the
+# chronotype (mood half as much), relative to the habitual slot, so the habitual check-in
+# keeps exactly the values it had before slots existed.
+SLOTS = ("morning", "afternoon", "evening")
+USUAL_SLOT_SHARE = 0.85
+QUICK_CHECKIN_P = 0.35  # per other slot and day
+QUICK_NOISE_SD = 0.35
+TOD_STREAM = 7  # random stream for time-of-day draws
+ENERGY_RHYTHM = {
+    "morning person": {"morning": 0.0, "afternoon": -0.5, "evening": -1.0},
+    "balanced": {"morning": -0.4, "afternoon": 0.0, "evening": -0.6},
+    "night owl": {"morning": -1.0, "afternoon": -0.4, "evening": 0.0},
+}
+SLOT_HOURS = {"morning": (7.0, 11.5), "afternoon": (12.5, 16.5), "evening": (18.0, 22.5)}
 DEMO_PASSWORD = "twin-demo-2026"
 
 # The plan's personas (fixed patterns) plus the pure-noise control. They are showcases:
@@ -75,7 +91,7 @@ PERSONAS: dict[str, dict] = {
     "founder": {
         "archetype": "founder",
         "name": "Lin (founder)",
-        "seed": 2011,
+        "seed": 2124,
         "strength": 1.8,
         "patterns": ["stress_leads_mood", "exercise_next_mood"],
     },
@@ -95,7 +111,7 @@ class Generated:
     patterns: list[Pattern]
     noise: bool
     seed: int
-    checkins: list[dict] = field(default_factory=list)
+    checkins: list[dict] = field(default_factory=list)  # up to one per slot and day
     activities: list[dict] = field(default_factory=list)
     messages: list[dict] = field(default_factory=list)
     decisions: list[dict] = field(default_factory=list)
@@ -116,6 +132,7 @@ class Generated:
                 "planner_share": round(a.planner_share, 2),
             },
             "days": len({c["date"] for c in self.checkins}),
+            "rhythm": rhythm_of(a, self.noise),
         }
 
 
@@ -125,6 +142,23 @@ def chronotype(peak_hour: float) -> str:
     if peak_hour > 18:
         return "night owl"
     return "balanced"
+
+
+def rhythm_of(a: Archetype, noise: bool = False) -> dict:
+    """Planted daily rhythm: offsets per slot, 0 in the habitual slot. None for noise users."""
+    energy = {s: 0.0 for s in SLOTS} if noise else ENERGY_RHYTHM[chronotype(a.peak_hour)]
+    usual = next(s for s in SLOTS if energy[s] == 0.0)
+    return {
+        "usual_slot": usual,
+        "energy": dict(energy),
+        "mood": {s: round(v / 2, 2) for s, v in energy.items()},
+    }
+
+
+def _slot_time(rng: np.random.Generator, d: date, slot: str) -> datetime:
+    lo, hi = SLOT_HOURS[slot]
+    minutes = int(rng.uniform(lo, hi) * 60)
+    return datetime.combine(d, time(minutes // 60, minutes % 60))
 
 
 # --------------------------------------------------------------------------------------
@@ -182,6 +216,10 @@ def simulate(
     strength: float = 1.0,
 ) -> Generated:
     rng = np.random.default_rng(seed)
+    # time-of-day draws use their own stream, so all other generated values stay identical
+    rng_tod = np.random.default_rng([seed, TOD_STREAM])
+    rhythm = rhythm_of(arch, noise)
+    usual = rhythm["usual_slot"]
     gen = Generated(arch, patterns, noise, seed)
     start = end - timedelta(days=days - 1)
     history: list[dict] = []
@@ -263,16 +301,42 @@ def simulate(
         if not recorded:
             continue
 
-        scores = {m: int(np.clip(round(latent[m]), 1, 5)) for m in latent}
+        slot = usual
+        if rng_tod.random() >= USUAL_SLOT_SHARE:
+            slot = str(rng_tod.choice([s for s in SLOTS if s != usual]))
+
+        def at(m: str, s: str, extra: float = 0.0, latent: dict = latent) -> int:
+            return int(np.clip(round(latent[m] + rhythm.get(m, {}).get(s, 0.0) + extra), 1, 5))
+
+        scores = {m: at(m, slot) for m in latent}
         gen.checkins.append(
             {
                 "date": d,
+                "slot": slot,
+                "checked_at": _slot_time(rng_tod, d, slot),
                 **scores,
                 "sleep_hours": None if rng.random() < 0.03 else sleep,
                 "note": None,
                 "source": "manual",
             }
         )
+        for s in SLOTS:  # quick check-ins: mood and energy only
+            if s == slot or rng_tod.random() >= QUICK_CHECKIN_P:
+                continue
+            gen.checkins.append(
+                {
+                    "date": d,
+                    "slot": s,
+                    "checked_at": _slot_time(rng_tod, d, s),
+                    "mood": at("mood", s, rng_tod.normal(0, QUICK_NOISE_SD)),
+                    "energy": at("energy", s, rng_tod.normal(0, QUICK_NOISE_SD)),
+                    "stress": None,
+                    "focus": None,
+                    "sleep_hours": None,
+                    "note": None,
+                    "source": "manual",
+                }
+            )
 
         # ---- activities ----
         # Completion of a planned task depends on the day's focus, and (knowable in advance)
@@ -474,12 +538,16 @@ def write_generated(
     profile.categories = [c.name for c in a.cats]
     profile.onboarding = {"quiz": quiz.model_dump(), "synthetic": gen.truth()}
     profile.traits = quiz_prior(quiz)
-    profile.data_days = len(gen.checkins)
+    profile.data_days = len({c["date"] for c in gen.checkins})
     profile.accuracy_score = None
 
     uid = {"user_id": user.id}
+    tz = tz_of(user)  # generated times are local clock times
     if gen.checkins:
-        db.execute(insert(Checkin), [uid | c for c in gen.checkins])
+        db.execute(
+            insert(Checkin),
+            [uid | c | {"checked_at": c["checked_at"].replace(tzinfo=tz)} for c in gen.checkins],
+        )
     if gen.activities:
         db.execute(insert(Activity), [uid | x for x in gen.activities])
     if gen.tomorrow:
@@ -524,12 +592,14 @@ def seed_persona_into_user(
     return write_generated(db, user, gen, embed=embed)
 
 
-def _upsert_demo_user(db: Session, email: str, name: str) -> User:
+def _upsert_demo_user(db: Session, email: str, name: str, timezone: str | None = None) -> User:
     old = db.scalar(select(User).where(User.email == email))
     if old:
         db.delete(old)  # cascades to all their rows
         db.flush()
-    user = User(email=email, name=name, password_hash=hash_password(DEMO_PASSWORD))
+    user = User(
+        email=email, name=name, password_hash=hash_password(DEMO_PASSWORD), timezone=timezone
+    )
     db.add(user)
     db.flush()
     db.add_all(Consent(user_id=user.id, source=s, allowed=True) for s in CONSENT_SOURCES)
@@ -554,12 +624,14 @@ def create_demo_users(
     days: int = 90,
     embed: bool = True,
     pipeline: bool = True,
+    timezone: str | None = None,
 ) -> list[dict]:
+    """`timezone`: the demo users' local time; generated check-in times are clock times in it."""
     end = date.today()
     summary = []
     for key, p in PERSONAS.items():
         arch, patterns, noise, seed = persona_spec(key)
-        user = _upsert_demo_user(db, f"{key}@{DEMO_DOMAIN}", p["name"])
+        user = _upsert_demo_user(db, f"{key}@{DEMO_DOMAIN}", p["name"], timezone)
         gen = simulate(
             arch,
             patterns,
@@ -581,7 +653,7 @@ def create_demo_users(
         first = FIRST_NAMES[(i + 4) % len(FIRST_NAMES)]
         name = f"{first} {LAST_INITIALS[i % len(LAST_INITIALS)]}."
         email = f"user{i + 1:02d}.{arch.key}@{DEMO_DOMAIN}"
-        user = _upsert_demo_user(db, email, name)
+        user = _upsert_demo_user(db, email, name, timezone)
         gen = simulate(arch, patterns, days=days, end=end, seed=seed, noise_sd=noise_sd)
         counts = write_generated(db, user, gen, embed=embed, noise_sd=noise_sd)
         if pipeline:
@@ -605,7 +677,14 @@ def main() -> None:
         action="store_true",
         help="don't run the twin pipeline after seeding (faster)",
     )
+    ap.add_argument(
+        "--timezone",
+        default=None,
+        help="IANA timezone for the demo users, e.g. Asia/Kolkata (default: UTC)",
+    )
     args = ap.parse_args()
+    if args.timezone and not valid_timezone(args.timezone):
+        ap.error(f"unknown timezone: {args.timezone}")
     logging.basicConfig(level=logging.INFO, format="%(message)s")
 
     with SessionLocal() as db:
@@ -615,6 +694,7 @@ def main() -> None:
             days=args.days,
             embed=not args.no_embed,
             pipeline=not args.no_pipeline,
+            timezone=args.timezone,
         )
     out = BACKEND_DIR / "data" / "ground_truth.json"
     out.parent.mkdir(exist_ok=True)

@@ -24,7 +24,12 @@ class UserOut(BaseModel):
     email: str
     name: str
     role: str | None
+    timezone: str | None
     created_at: datetime
+
+
+class MeUpdateIn(BaseModel):
+    timezone: str = Field(min_length=1, max_length=64)  # IANA name, e.g. "Asia/Kolkata"
 
 
 class MeOut(BaseModel):

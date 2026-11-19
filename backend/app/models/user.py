@@ -19,6 +19,7 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(100), nullable=False)
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     role: Mapped[str | None] = mapped_column(Text)  # free text
+    timezone: Mapped[str | None] = mapped_column(String(64))  # IANA name, from the browser
     created_at: Mapped[datetime] = created_at_col()
 
     profile: Mapped["TwinProfile"] = relationship(

@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { tokens } from "@/lib/api";
-import { useMe } from "@/lib/hooks";
+import { useQueryClient } from "@tanstack/react-query";
+import { api, tokens } from "@/lib/api";
+import { qk, useMe } from "@/lib/hooks";
 import type { Me } from "@/lib/types";
 import { FullPageSpinner } from "./spinner";
 import { FormError } from "./ui/alert";
@@ -34,6 +35,20 @@ export function AuthGuard({
   // navigates itself, and the guard must not race it with a redirect of its own.
   const newUserAtLoad = useRef<boolean | null>(null);
   if (me && newUserAtLoad.current === null) newUserAtLoad.current = !me.onboarded;
+
+  // Check-in slots follow local time: save this device's timezone once (Settings can change it).
+  const qc = useQueryClient();
+  const tzSent = useRef(false);
+  useEffect(() => {
+    if (!me || me.user.timezone || tzSent.current) return;
+    tzSent.current = true;
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (timezone)
+      api
+        .updateMe({ timezone })
+        .then((m) => qc.setQueryData(qk.me, m))
+        .catch(() => {}); // not critical: the server falls back to UTC
+  }, [me, qc]);
 
   useEffect(() => {
     if (!me) return;

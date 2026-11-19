@@ -6,6 +6,7 @@ import { api } from "./api";
 export const qk = {
   me: ["me"] as const,
   checkins: (from?: string, to?: string) => ["checkins", from, to] as const,
+  checkinToday: ["checkins", "today"] as const,
   activities: (from?: string, to?: string) => ["activities", from, to] as const,
   consents: ["consents"] as const,
   chat: ["chat"] as const,

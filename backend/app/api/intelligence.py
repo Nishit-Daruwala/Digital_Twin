@@ -47,16 +47,42 @@ def _pred_out(db: Session, p: Prediction, user: User) -> PredictionOut:
     out.task_title = (p.explanation or {}).get("task", {}).get("title")
     if p.actual is None:
         if p.target in ("mood", "energy"):
-            c = db.scalar(
-                select(Checkin).where(Checkin.user_id == user.id, Checkin.date == p.for_date)
-            )
-            v = getattr(c, p.target) if c else None
-            out.suggested_actual = float(v) if v is not None else None
+            # what the user entered that day (average of its check-ins), as a 1-5 suggestion
+            vals = db.scalars(
+                select(getattr(Checkin, p.target)).where(
+                    Checkin.user_id == user.id, Checkin.date == p.for_date
+                )
+            ).all()
+            vals = [v for v in vals if v is not None]
+            out.suggested_actual = float(round(sum(vals) / len(vals))) if vals else None
         elif p.target == "task" and p.task_id:
             a = db.get(Activity, p.task_id)
             if a and a.user_id == user.id and p.for_date <= date.today():
                 out.suggested_actual = 1.0 if a.completed else 0.0
     return out
+
+
+def _daily_series(rows: list[Checkin]) -> list[SeriesPoint]:
+    """One point per day as the user entered it: the mean of that day's check-ins."""
+    by_day: dict[date, list[Checkin]] = {}
+    for c in rows:
+        by_day.setdefault(c.date, []).append(c)
+
+    def mean(cs, f):
+        vals = [getattr(c, f) for c in cs if getattr(c, f) is not None]
+        return round(sum(vals) / len(vals), 1) if vals else None
+
+    return [
+        SeriesPoint(
+            date=d,
+            mood=mean(cs, "mood"),
+            energy=mean(cs, "energy"),
+            focus=mean(cs, "focus"),
+            stress=mean(cs, "stress"),
+            sleep_hours=mean(cs, "sleep_hours"),
+        )
+        for d, cs in sorted(by_day.items())
+    ]
 
 
 def _active_insights(db: Session, user: User, type_: str, limit: int) -> list[Insight]:
@@ -174,21 +200,12 @@ def dashboard(
         )
 
     since = today - timedelta(days=days - 1)
-    series = [
-        SeriesPoint(
-            date=c.date,
-            mood=c.mood,
-            energy=c.energy,
-            focus=c.focus,
-            stress=c.stress,
-            sleep_hours=c.sleep_hours,
-        )
-        for c in db.scalars(
-            select(Checkin)
-            .where(Checkin.user_id == user.id, Checkin.date >= since, Checkin.date <= today)
-            .order_by(Checkin.date)
-        )
-    ]
+    rows = db.scalars(
+        select(Checkin)
+        .where(Checkin.user_id == user.id, Checkin.date >= since, Checkin.date <= today)
+        .order_by(Checkin.date)
+    ).all()
+    series = _daily_series(rows)
     mins = db.execute(
         select(Activity.category, func.sum(Activity.duration_min))
         .where(
@@ -226,6 +243,7 @@ def dashboard(
         tomorrow=predictions_tomorrow(user, db),
         insights=[_insight_out(i, today) for i in _active_insights(db, user, "pattern", 6)],
         anomalies=[_insight_out(i, today) for i in _active_insights(db, user, "anomaly", 3)],
+        rhythm=[_insight_out(i, today) for i in _active_insights(db, user, "rhythm", 2)],
         traits=profile.traits if profile else {},
         series=series,
         minutes_by_category=[CategoryMinutes(category=c, minutes=int(m or 0)) for c, m in mins],

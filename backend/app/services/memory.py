@@ -18,6 +18,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.ml.intraday import SLOTS
 from app.models import Checkin, Insight, Message, TwinProfile
 
 SYSTEM_PROMPT = """You are the user's digital twin: a reflective version of them that has \
@@ -103,7 +104,7 @@ def _fmt_checkin(c: Checkin) -> str:
     ]
     if c.sleep_hours is not None:
         parts.append(f"sleep {c.sleep_hours:g}h")
-    line = f"- {c.date.isoformat()}: " + ", ".join(parts)
+    line = f"- {c.date.isoformat()} ({c.slot}): " + ", ".join(parts)
     if c.note:
         line += f' (note: "{c.note[:120]}")'
     return line
@@ -142,14 +143,19 @@ def build_facts(
         lines.append("Discovered patterns:\n" + "\n".join(f"- {i.text}" for i in insights))
 
     if checkins_allowed:
-        week = db.scalars(
-            select(Checkin)
-            .where(Checkin.user_id == user_id, Checkin.date >= today - timedelta(days=6))
-            .order_by(Checkin.date.desc())
-        ).all()
+        week = sorted(
+            db.scalars(
+                select(Checkin).where(
+                    Checkin.user_id == user_id, Checkin.date >= today - timedelta(days=6)
+                )
+            ).all(),
+            key=lambda c: (c.date, SLOTS.index(c.slot)),
+            reverse=True,  # newest first
+        )
         if week:
             lines.append(
-                "Check-ins, last 7 days (1-5 scales):\n" + "\n".join(_fmt_checkin(c) for c in week)
+                "Check-ins, last 7 days (1-5 scales; up to one per morning/afternoon/evening):\n"
+                + "\n".join(_fmt_checkin(c) for c in week)
             )
         else:
             lines.append("Check-ins, last 7 days: none logged.")

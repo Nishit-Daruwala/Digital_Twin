@@ -123,3 +123,33 @@ def test_retrain_endpoint_and_rate_limit(client, monkeypatch):
     r = client.post("/jobs/retrain", headers=h)
     assert r.status_code == 429 and "Retry-After" in r.headers
     assert client.post("/jobs/retrain").status_code == 401
+
+
+def test_time_of_day_on_dashboard(client):
+    """Phase 3.5: the seeded morning person gets a learned rhythm, per-slot forecasts for
+    tomorrow (scored per slot on back-tested days) and a rhythm statement."""
+    h = auth(seeded(client))
+    d = client.get("/dashboard", headers=h).json()
+
+    tod = {p["target"]: p["explanation"].get("time_of_day") for p in d["tomorrow"]}
+    for target in ("mood", "energy"):
+        assert tod[target] and tod[target]["learned"], target
+        slots = tod[target]["slots"]
+        assert set(slots) == {"morning", "afternoon", "evening"}
+        assert all(1 <= s["value"] <= 5 and s["n"] > 0 for s in slots.values())
+    e = tod["energy"]["slots"]
+    assert e["morning"]["value"] > e["evening"]["value"]  # the founder is a morning person
+
+    assert d["accuracy"]["by_slot"]["n"] > 0
+    assert 0 <= d["accuracy"]["by_slot"]["accuracy"] <= 1
+
+    assert d["rhythm"], "no rhythm statement"
+    r = d["rhythm"][0]
+    assert r["type"] == "rhythm" and r["key"] == "rhythm:energy"
+    assert r["text"].startswith("Your energy is usually higher in the morning than in the evening")
+    assert r["evidence"]["n"] >= 8 and r["evidence"]["p_adj"] <= 0.05
+    assert all(i["type"] == "pattern" for i in d["insights"])  # kept apart from patterns
+
+    run = client.get("/jobs/last", headers=h).json()
+    assert run["steps"]["rhythm"]["status"] == "ok"
+    assert run["steps"]["rhythm"]["days_with_2plus"] > 10

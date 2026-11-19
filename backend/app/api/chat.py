@@ -27,7 +27,9 @@ from app.api.activities import check_category
 from app.api.deps import DB, CurrentUser
 from app.api.privacy import consent_map
 from app.core.config import settings
+from app.core.timeutil import local_now, to_local
 from app.db import get_session_factory
+from app.ml.intraday import slot_for, slot_started
 from app.models import Activity, Checkin, Decision, Message, TwinProfile, User
 from app.schemas.activity import ActivityOut
 from app.schemas.chat import ChatIn, ConfirmOut, ExtractionCard, MessageOut
@@ -215,6 +217,17 @@ def _pending_message(db: Session, user: User, message_id: uuid.UUID) -> Message:
     return msg
 
 
+def _card_slot(user: User, msg: Message, card: ExtractionCard) -> str:
+    """The slot a chat check-in belongs to: what the message said ("this morning"), else
+    when it was sent; never a part of today that hasn't started."""
+    now = local_now(user)
+    msg_day, msg_slot = slot_for(to_local(user, msg.created_at))
+    slot = card.checkin.slot or (msg_slot if card.date == msg_day else "evening")
+    if not slot_started(card.date, slot, now):
+        slot = slot_for(now)[1]
+    return slot
+
+
 @router.post("/extractions/{message_id}/confirm", response_model=ConfirmOut)
 def confirm_extraction(
     message_id: uuid.UUID, body: ExtractionCard, user: CurrentUser, db: DB
@@ -233,12 +246,22 @@ def confirm_extraction(
 
     saved_checkin: Checkin | None = None
     if not body.checkin.is_empty():
-        fields = {k: v for k, v in body.checkin.model_dump().items() if v is not None}
+        fields = body.checkin.values()
+        slot = _card_slot(user, msg, body)
         saved_checkin = db.scalar(
-            select(Checkin).where(Checkin.user_id == user.id, Checkin.date == body.date)
+            select(Checkin).where(
+                Checkin.user_id == user.id, Checkin.date == body.date, Checkin.slot == slot
+            )
         )
         if saved_checkin is None:
-            saved_checkin = Checkin(user_id=user.id, date=body.date, source="ai", **fields)
+            saved_checkin = Checkin(
+                user_id=user.id,
+                date=body.date,
+                slot=slot,
+                checked_at=msg.created_at,
+                source="ai",
+                **fields,
+            )
             db.add(saved_checkin)
         else:  # merge: only overwrite what the user confirmed
             for k, v in fields.items():

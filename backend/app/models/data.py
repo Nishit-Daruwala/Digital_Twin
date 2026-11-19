@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     Date,
+    DateTime,
     Float,
     Index,
     Integer,
@@ -31,9 +32,13 @@ def _scale_1_5(col: str) -> CheckConstraint:
 
 
 class Checkin(Base):
+    """Up to three per day, one per slot (morning / afternoon / evening, see ml.intraday).
+    The first of the day asks everything; later ones may be quick (mood + energy only)."""
+
     __tablename__ = "checkins"
     __table_args__ = (
-        UniqueConstraint("user_id", "date", name="uq_checkins_user_date"),
+        UniqueConstraint("user_id", "date", "slot", name="uq_checkins_user_date_slot"),
+        CheckConstraint("slot IN ('morning', 'afternoon', 'evening')", name="slot_valid"),
         _scale_1_5("mood"),
         _scale_1_5("energy"),
         _scale_1_5("stress"),
@@ -44,6 +49,8 @@ class Checkin(Base):
     id: Mapped[uuid.UUID] = uuid_pk()
     user_id: Mapped[uuid.UUID] = user_fk()
     date: Mapped[date_type] = mapped_column(Date, nullable=False)
+    slot: Mapped[str] = mapped_column(String(10), nullable=False, server_default="morning")
+    checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     mood: Mapped[int | None] = mapped_column(SmallInteger)
     energy: Mapped[int | None] = mapped_column(SmallInteger)
     stress: Mapped[int | None] = mapped_column(SmallInteger)

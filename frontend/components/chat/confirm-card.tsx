@@ -146,7 +146,10 @@ export function ConfirmCard({
       <div className="flex flex-col gap-4 p-4">
         {(shownMetrics.length > 0 || sleep != null) && (
           <section aria-label="Check-in" className="flex flex-col gap-2.5">
-            <p className="eyebrow text-muted-foreground">Check-in</p>
+            <p className="eyebrow text-muted-foreground">
+              Check-in
+              {card.checkin.slot && <span className="normal-case"> · this {card.checkin.slot}</span>}
+            </p>
             {sleep != null && (
               <Row label="Sleep" onRemove={() => setCheckin("sleep_hours", null)}>
                 <Input

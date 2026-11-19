@@ -45,6 +45,7 @@ EXTRACTION_SCHEMA: dict = {
     "additionalProperties": False,
     "required": [
         "day",
+        "part_of_day",
         "sleep_hours",
         "mood",
         "energy",
@@ -57,6 +58,10 @@ EXTRACTION_SCHEMA: dict = {
     ],
     "properties": {
         "day": {"type": "string", "enum": ["today", "yesterday"]},
+        "part_of_day": {
+            "type": ["string", "null"],
+            "enum": ["morning", "afternoon", "evening", None],
+        },
         "sleep_hours": {"type": ["number", "null"]},
         "mood": {"type": ["integer", "null"]},
         "energy": {"type": ["integer", "null"]},
@@ -116,6 +121,8 @@ def extraction_prompt(categories: list[str], today: date) -> str:
         "- mood, energy, stress, focus are integers 1-5 (1 = very low, 5 = very high). Only "
         "fill them when the user rates them or describes them unambiguously.\n"
         "- sleep_hours: hours slept last night, only if stated.\n"
+        "- part_of_day: 'morning', 'afternoon' or 'evening' only when the message says when "
+        "the user felt this (e.g. 'this morning', 'tonight'); otherwise null.\n"
         f"- Activities may ONLY use one of these categories: {json.dumps(categories)}. "
         "If an activity fits none, leave it out.\n"
         "- title: a short capitalised label for the activity (e.g. 'Study session', "
@@ -309,6 +316,18 @@ class FakeProvider:
         text = message.lower()
         out: dict = {
             "day": "yesterday" if "yesterday" in text else "today",
+            "part_of_day": next(
+                (
+                    slot
+                    for slot, words in (
+                        ("morning", ("this morning",)),
+                        ("afternoon", ("this afternoon",)),
+                        ("evening", ("this evening", "tonight")),
+                    )
+                    if any(w in text for w in words)
+                ),
+                None,
+            ),
             "sleep_hours": None,
             "mood": None,
             "energy": None,
@@ -382,7 +401,7 @@ class FakeProvider:
         parts = ["(Offline twin) I'm running without an AI model, so this is a simple reply."]
         if memories:
             parts.append(f'You told me before: "{memories[0]}".')
-        checkin = re.search(r"^- (\d{4}-\d{2}-\d{2}): mood (\d)", facts, flags=re.M)
+        checkin = re.search(r"^- (\d{4}-\d{2}-\d{2})(?: \(\w+\))?: mood (\d)", facts, flags=re.M)
         if checkin:
             parts.append(f"Your latest check-in ({checkin.group(1)}) had mood {checkin.group(2)}.")
         for word in " ".join(parts).split(" "):

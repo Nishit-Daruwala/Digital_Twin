@@ -28,6 +28,7 @@ export interface User {
   email: string;
   name: string;
   role: string | null;
+  timezone: string | null; // IANA name; set from the browser on first load
   created_at: string;
 }
 
@@ -52,20 +53,27 @@ export interface OnboardingIn {
   quiz: QuizAnswers;
 }
 
+export type Slot = "morning" | "afternoon" | "evening";
+
+/** Full check-in (everything) or quick check-in (mood + energy only). Date and slot default
+ *  to the user's current local day and part of the day. */
 export interface CheckinIn {
-  date: string; // YYYY-MM-DD
+  date?: string; // YYYY-MM-DD
+  slot?: Slot;
   mood: number;
   energy: number;
-  stress: number;
-  focus: number;
-  sleep_hours: number | null;
-  note: string | null;
+  stress?: number | null;
+  focus?: number | null;
+  sleep_hours?: number | null;
+  note?: string | null;
 }
 
-/** Saved check-in. Scores can be null when it was created from chat with only some fields. */
+/** Saved check-in. Scores can be null for quick check-ins or chat cards with only some fields. */
 export interface Checkin {
   id: string;
   date: string;
+  slot: Slot;
+  checked_at: string | null;
   mood: number | null;
   energy: number | null;
   stress: number | null;
@@ -74,6 +82,24 @@ export interface Checkin {
   note: string | null;
   source: "manual" | "ai";
   updated_at: string;
+}
+
+export interface SlotState {
+  slot: Slot;
+  label: string;
+  window: string;
+  started: boolean;
+  current: boolean;
+  checkin: Checkin | null;
+}
+
+/** Today's three slots (GET /checkins/today). */
+export interface CheckinDay {
+  date: string;
+  current_slot: Slot;
+  timezone: string;
+  full_done: boolean;
+  slots: SlotState[];
 }
 
 export interface ActivityIn {
@@ -108,6 +134,7 @@ export interface CardCheckin {
   stress: number | null;
   focus: number | null;
   sleep_hours: number | null;
+  slot?: Slot | null;
 }
 
 export interface CardActivity {
@@ -194,7 +221,7 @@ export interface SeedResult {
 
 export interface Insight {
   id: string;
-  type: "pattern" | "anomaly";
+  type: "pattern" | "anomaly" | "rhythm";
   key: string | null;
   text: string;
   evidence: Record<string, unknown> & {
@@ -256,8 +283,15 @@ export interface Prediction {
     start_from?: number | null;
     units?: string;
     metrics?: Record<string, unknown>;
+    time_of_day?: TimeOfDay;
   };
   suggested_actual: number | null;
+}
+
+/** Tomorrow by slot = the daily prediction + the person's usual offset for that slot. */
+export interface TimeOfDay {
+  learned: boolean;
+  slots: Record<Slot, { value: number; offset: number; n: number }>;
 }
 
 export interface Accuracy {
@@ -266,6 +300,7 @@ export interface Accuracy {
   n: number;
   backtest_share: number;
   by_target: Record<string, number>;
+  by_slot?: { accuracy: number | null; n: number };
 }
 
 export interface JobRun {
@@ -295,6 +330,7 @@ export interface Dashboard {
   tomorrow: Prediction[];
   insights: Insight[];
   anomalies: Insight[];
+  rhythm: Insight[];
   traits: Record<string, Trait & { detail?: string }>;
   series: SeriesPoint[];
   minutes_by_category: { category: string; minutes: number }[];

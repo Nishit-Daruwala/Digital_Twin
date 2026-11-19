@@ -103,6 +103,13 @@ export default function SettingsPage() {
       </Section>
 
       <Section
+        title="Timezone"
+        description="Check-in slots (morning, afternoon, evening) follow your local time."
+      >
+        <TimezoneSetting current={me?.user.timezone ?? null} />
+      </Section>
+
+      <Section
         title="Data sources"
         description="Switch a source off and your twin stops learning from it."
       >
@@ -163,6 +170,54 @@ const PERSONAS: { key: Persona; title: string; desc: string }[] = [
   { key: "founder", title: "Founder", desc: "Stress builds two days before mood drops; exercise lifts the next day." },
   { key: "noise", title: "Control (random)", desc: "No hidden patterns at all. A good twin should find nothing." },
 ];
+
+function TimezoneSetting({ current }: { current: string | null }) {
+  const qc = useQueryClient();
+  const device = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const zones = typeof Intl.supportedValuesOf === "function" ? Intl.supportedValuesOf("timeZone") : [];
+  const options = Array.from(new Set([current, device, ...zones].filter(Boolean) as string[]));
+  const set = useMutation({
+    mutationFn: (timezone: string) => api.updateMe({ timezone }),
+    onSuccess: (m) => {
+      qc.setQueryData(qk.me, m);
+      qc.invalidateQueries({ queryKey: ["checkins"] });
+    },
+  });
+  return (
+    <Card className="flex flex-col gap-3 p-5">
+      <label htmlFor="tz" className="text-sm font-medium">
+        Your timezone
+      </label>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          id="tz"
+          className="h-10 min-w-0 max-w-full flex-1 rounded-md border border-input bg-card px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          value={current ?? ""}
+          onChange={(e) => e.target.value && set.mutate(e.target.value)}
+          disabled={set.isPending}
+        >
+          {!current && <option value="">Not set (using UTC)</option>}
+          {options.map((z) => (
+            <option key={z} value={z}>
+              {z.replace(/_/g, " ")}
+            </option>
+          ))}
+        </select>
+        {current !== device && (
+          <Button variant="outline" size="sm" onClick={() => set.mutate(device)} disabled={set.isPending}>
+            Use this device ({device.replace(/_/g, " ")})
+          </Button>
+        )}
+        {set.isSuccess && (
+          <span className="flex items-center gap-1 text-sm text-success" role="status">
+            <Check className="h-4 w-4" aria-hidden /> Saved
+          </span>
+        )}
+      </div>
+      <FormError message={set.error?.message} />
+    </Card>
+  );
+}
 
 function DemoData() {
   const qc = useQueryClient();

@@ -8,6 +8,7 @@ activity logs and chat, then predicts and recommends.
 | 1. Foundation: auth, schema, onboarding, check-in, log | 1–2 | ✅ Done |
 | 2. Learning inputs: chat + RAG memory, decisions, synthetic data, features | 3–4 | ✅ Done |
 | 3. Core intelligence: patterns, anomalies, predictions, SHAP, traits, accuracy | 5–6 | ✅ Done |
+| 3.5 Time of day: check-in slots, daily rhythm, tomorrow by part of the day | — | ✅ Done |
 | 4. Adapt & ship: recommendations, what-if, privacy, deploy | 7–8 | ⏳ |
 
 ## Stack
@@ -107,6 +108,20 @@ overlap, and a failing step doesn't stop the others.
 | **Traits** (`ml/traits.py`) | Chronotype, optimism bias, planner, consistency, stress triggers, best conditions. The quiz is used until 14 days of data; confidence grows with days. |
 | **Accuracy** (`ml/accuracy.py`) | Hit = within 0.5 (or the right task outcome). Rolling 14-day hit rate, shown next to the 7-day-mean baseline's own hit rate. |
 
+### Time of day (Phase 3.5)
+
+A day has three **optional** check-in slots: **morning** (until 12:00), **afternoon**
+(12:00–17:00) and **evening** (after 17:00; until 04:00 still counts as the evening before).
+The first check-in of the day asks everything; later ones are quick (mood + energy). Any slot
+can be skipped. Slots follow the user's timezone, which the browser sets on first load.
+
+| Piece | How (`ml/intraday.py`) |
+|---|---|
+| **Daily rhythm** | Per slot, the usual offset, fitted as *value = day level + slot offset* by least squares **only on days with 2+ check-ins**. Comparing within the same day avoids the bias of "I only check in at night on bad days", and the two-way fit stays unbiased when days have different sets of slots. Offsets are shrunk toward 0 while evidence is thin (n / (n + 5)). |
+| **Daily values** | Each check-in is adjusted for its slot, then the day's check-ins are averaged. Patterns, anomalies and the daily models learn from this, so a 9 AM and a 10 PM answer become comparable. |
+| **Tomorrow by time of day** | The daily prediction plus the person's slot offset. Scored per slot against the check-in made in that slot; back-tested days use only the rhythm known the evening before. |
+| **Rhythm statements** | "Your energy is usually higher in the morning than in the evening (3.6 vs 2.7, on 21 days you checked in at both)": a paired Wilcoxon test over 8+ days, Bonferroni-corrected, with a difference of at least 0.4 points. |
+
 ### Evaluation (against planted ground truth)
 
 ```bash
@@ -116,15 +131,27 @@ python -m app.ml.evaluate          # 34 users + 10 noise users, about 3 minutes
 
 | Metric | Result | Plan target |
 |---|---|---|
-| Pattern recall@5 | 84% of 67 planted | ≥ 80% |
+| Pattern recall@5 | 76% of 67 planted (75–82%, average 80%, over six random draws of check-in timing) | ≥ 80% |
 | False insights per noise user | max 1, mean 0.09 | 0–1 |
-| Twin MAE vs 7-day mean (14 → 60 days) | 4–6% better at every point | beats the baseline |
+| Twin MAE vs 7-day mean (14 → 60 days) | 3–7% better at every point | beats the baseline |
 | Task completion AUC | ~0.6 | (reported) |
 | Chronotype from data | ~70% correct | (reported) |
+| Best energy slot learned (time of day) | 100% of 33 users | (reported) |
+| Rhythm statements found and correct / false on noise users | 100% / 0 | (reported) |
+| Predicting a check-in from the same day's others | 25% lower error with the rhythm | beats ignoring time of day |
 
 `backend/notebooks/evaluation.ipynb` has the charts. A quick version runs in CI
 (`tests/test_evaluation.py`) and fails the build if recall drops below 80%, a noise user gets
-more than one insight, or the twin stops beating the baseline.
+more than one insight, the twin stops beating the baseline, or the time-of-day rhythm is no
+longer learned. The planted rhythms are clear by construction (energy moves up to 1 point
+through the day), so real users will be noisier than these numbers.
+
+Honest note on recall: before time of day, every synthetic user checked in once a day in the same
+slot and recall was 84%. Now 15% of daily check-ins happen at an unusual time and some days add
+quick check-ins, which is more realistic and noisier. Recall averages 80% across six random draws
+of that timing (75–82%); the standard evaluation draw gives 76%. The time-of-day adjustment does
+not change pattern recall on this data (80% with or without it); its benefit is the per-slot
+forecasts, which are 25% more accurate.
 
 The demo personas (`/demo/seed`, `python -m app.seed.synthetic_users`) are showcases: their
 planted effects are scaled up (`strength` in `PERSONAS`) so the patterns are clearly visible after
@@ -163,6 +190,10 @@ CI (GitHub Actions) runs all of the above on every push and pull request.
   shown yet.
 - The chat rate limiter is in-memory, per server process (fine for one instance).
 - Task completion is hard to predict in advance (AUC ~0.6); the twin falls back to your personal completion rate unless a model is significantly better.
+- Time-of-day forecasts need some days with 2+ check-ins; until then the dashboard only explains
+  how to unlock them. Skipping a slot is remembered on that device only.
+- Check-ins saved before Phase 3.5 have no reliable time of day and count as morning. This doesn't
+  affect the learned rhythm, which only uses days with two or more check-ins.
 - Reply speed depends on OpenAI. Measured here: first word after about 3–5 s.
 
 ## Security and privacy notes
@@ -181,9 +212,10 @@ CI (GitHub Actions) runs all of the above on every push and pull request.
 | Method | Route | Purpose |
 |---|---|---|
 | POST | `/auth/register`, `/auth/login`, `/auth/refresh` | Tokens |
-| GET | `/me` | User + twin profile |
+| GET / PATCH | `/me` | User + twin profile / set the timezone |
 | POST | `/onboarding` | Role, goals, categories, quiz (sets the starting trait estimates) |
-| POST / GET | `/checkins` | Upsert today's check-in / list with `?from&to` |
+| POST / GET | `/checkins` | Save a slot's check-in (full or quick; date and slot default to now) / list with `?from&to` |
+| GET | `/checkins/today` | Today's three slots: which are done, started, current |
 | POST / GET | `/activities` | Create / list with `?from&to` |
 | PATCH / DELETE | `/activities/{id}` | Tick off with actual minutes / remove |
 | POST | `/chat` | Send a message. Streams NDJSON: `user_message`, `extraction`, `token`…, `done` |

@@ -16,7 +16,9 @@ END = date(2026, 11, 14)
 def persona_features(key: str, days: int = 90):
     a, p, noise, s = persona_spec(key)
     gen = simulate(a, p, days=days, end=END, seed=s, noise=noise, strength=persona_strength(key))
-    ck = pd.DataFrame(gen.checkins)[["date", "sleep_hours", "mood", "energy", "stress", "focus"]]
+    ck = pd.DataFrame(gen.checkins)[
+        ["date", "slot", "sleep_hours", "mood", "energy", "stress", "focus"]
+    ]
     ms = pd.DataFrame(
         [{"date": m["created_at"].date(), "sentiment": m["sentiment"]} for m in gen.messages]
     )
@@ -64,10 +66,21 @@ def test_learned_model_only_when_it_clearly_beats_the_norm():
 
 
 def test_unpredictable_users_fall_back_to_their_norm():
-    f, _, _ = persona_features("noise", 90)
-    for target in P.REG_TARGETS:
-        t = P.train_regression(f, target)
-        assert t.kind == "mean28", (target, t.metrics)
+    """Pure-noise users: the 5% margin + walk-forward check keep learned models out. It is a
+    statistical guard, so a rare chance win is allowed (about 1 in 24 fits by design)."""
+    a, p, _, _ = persona_spec("noise")
+    kinds = []
+    for seed in range(1004, 1012):
+        gen = simulate(a, p, days=90, end=END, seed=seed, noise=True)
+        ck = pd.DataFrame(gen.checkins)[
+            ["date", "slot", "sleep_hours", "mood", "energy", "stress", "focus"]
+        ]
+        f = build_features(
+            ck, pd.DataFrame(gen.activities), pd.DataFrame(), [c.name for c in a.cats]
+        )
+        kinds += [P.train_regression(f, target).kind for target in P.REG_TARGETS]
+    learned = sum(k != "mean28" for k in kinds)
+    assert learned <= 2, kinds  # of 16 fits
 
 
 def test_assumed_plan_uses_plans_then_typical_values():

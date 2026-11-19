@@ -127,10 +127,14 @@ def build_features(
     categories: list[str],
 ) -> pd.DataFrame:
     """Pure function. Inputs:
-    checkins:   date, sleep_hours, mood, energy, stress, focus
+    checkins:   date, sleep_hours, mood, energy, stress, focus (+ slot: several check-ins a
+                day are adjusted for time of day and combined into one row per day)
     activities: date, category, start_time, duration_min, planned, completed, planned_min
     messages:   date, sentiment   (already filtered to learnable user messages)
     """
+    from app.ml import intraday
+
+    checkins = intraday.daily(checkins)
     dates = [pd.to_datetime(df["date"]) for df in (checkins, activities, messages) if not df.empty]
     if not dates:
         return pd.DataFrame()
@@ -230,7 +234,7 @@ def load_frames(
     def frame(rows, cols):
         return pd.DataFrame([dict(zip(cols, r, strict=True)) for r in rows], columns=cols)
 
-    ck_cols = ["date", *CHECKIN_COLS]
+    ck_cols = ["date", "slot", *CHECKIN_COLS]
     checkins = pd.DataFrame(columns=ck_cols)
     if consents["checkin"]:
         q = select(*[getattr(Checkin, c) for c in ck_cols]).where(Checkin.user_id == user_id)

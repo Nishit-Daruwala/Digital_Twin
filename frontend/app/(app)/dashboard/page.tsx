@@ -18,7 +18,9 @@ import { AccuracyRing } from "@/components/twin/accuracy-ring";
 import { InsightCard } from "@/components/twin/insight-card";
 import { PersonalityCard } from "@/components/twin/personality-card";
 import { PredictionCard } from "@/components/twin/prediction-card";
+import { SlotPrompt } from "@/components/twin/slot-prompt";
 import { TaskList } from "@/components/twin/task-list";
+import { TimeOfDayCard } from "@/components/twin/time-of-day-card";
 import { relativeTime } from "@/components/twin/viz";
 
 // Charts (Recharts, ~100 kB) load after the rest of the dashboard is on screen.
@@ -73,6 +75,8 @@ export default function DashboardPage() {
         <Loading />
       ) : (
         <div className="flex flex-col gap-8">
+          <SlotPrompt />
+
           {d.pending_count > 0 && (
             <Link
               href="/checkin"
@@ -130,6 +134,7 @@ export default function DashboardPage() {
                   </Card>
                 )}
               </div>
+              <TimeOfDayCard daily={daily} rhythm={d.rhythm ?? []} accuracy={d.accuracy} />
               <TaskList tasks={tasks} />
             </section>
           )}

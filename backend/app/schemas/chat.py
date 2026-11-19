@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime, time
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -32,9 +33,14 @@ class CardCheckin(BaseModel):
     stress: int | None = Scale
     focus: int | None = Scale
     sleep_hours: float | None = Field(default=None, ge=0, le=24)
+    # "this afternoon" in the message; otherwise the slot of the message's local time
+    slot: Literal["morning", "afternoon", "evening"] | None = None
+
+    def values(self) -> dict:
+        return {k: v for k, v in self.model_dump(exclude={"slot"}).items() if v is not None}
 
     def is_empty(self) -> bool:
-        return all(v is None for v in self.model_dump().values())
+        return not self.values()
 
 
 class CardActivity(BaseModel):

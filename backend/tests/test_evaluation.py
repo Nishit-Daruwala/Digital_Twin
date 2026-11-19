@@ -28,3 +28,11 @@ def test_twin_beats_the_seven_day_mean(result):
 def test_traits_track_ground_truth(result):
     assert result["traits"]["chronotype_accuracy"] >= 0.5
     assert result["traits"]["optimism_abs_error"] <= 0.05
+
+
+def test_time_of_day_rhythm_is_learned(result):
+    t = result["time_of_day"]
+    assert t["best_slot_accuracy"] >= 0.8, t
+    assert t["statement_recall"] >= 0.8, t
+    assert t["false_statements_max"] <= 1, t["false_statements"]
+    assert t["slot_mae_with_rhythm"] < t["slot_mae_without"], t  # the rhythm helps
