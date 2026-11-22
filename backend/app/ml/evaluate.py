@@ -15,6 +15,9 @@ Metrics
 - Time of day (Phase 3.5): is the learned best slot for energy the planted one; are rhythm
   statements right (and absent for noise users); and does the rhythm improve predicting a
   check-in from the same day's other check-ins (rhythm learned on earlier days only).
+- Adaptation (Phase 4): simulated users with hidden tastes rate the 3 daily recommendations;
+  share of thumbs-up in week 1 vs week 4, for no learning, the plan's fixed weights and
+  Thompson sampling.
 
 CLI:  python -m app.ml.evaluate                 (4 personas + 30 users + 10 noise users)
       python -m app.ml.evaluate --quick         (what CI runs)
@@ -34,6 +37,7 @@ import pandas as pd
 from app.ml import intraday
 from app.ml import patterns as pat
 from app.ml import predict as P
+from app.ml import recommend as rec
 from app.ml.features import build_features
 from app.ml.traits import compute_traits
 from app.seed.archetypes import ARCHETYPES
@@ -261,6 +265,50 @@ def rhythm_metrics(users: list[User]) -> dict:
     }
 
 
+def adaptation_metrics(n_users: int = 300, seed: int = 11) -> dict:
+    """Simulated users like 2 of the 6 advice types (80% thumbs-up) and mostly dislike the
+    rest (20%). Each day some candidates of each type exist with random relevance; the policy
+    shows 3, the user rates them, and the policy learns. Two scenarios:
+    - stable tastes for 28 days: thumbs-up share in week 1 vs week 4;
+    - tastes change on day 21 (2 other types become the liked ones): share in week 6.
+    With 2 liked types and 3 slots, the best possible share is about 57%."""
+    types = list(rec.TYPES)
+    out = {}
+    for policy in ("relevance", "weights", "thompson"):
+        decay = rec.DECAY if policy == "thompson" else 1.0
+        res = {}
+        for scenario, days in (("stable", 28), ("change", 42)):
+            rng = np.random.default_rng(seed)  # the same users and days for every policy
+            first, last = [], []
+            for _ in range(n_users):
+                liked = set(rng.choice(types, size=2, replace=False))
+                later = set(rng.choice([t for t in types if t not in liked], 2, replace=False))
+                stats: dict = {}
+                for day in range(days):
+                    stats = {t: (lk * decay, dk * decay) for t, (lk, dk) in stats.items()}
+                    fav = later if scenario == "change" and day >= 21 else liked
+                    cands = [
+                        rec.Candidate(t, f"{t}:{day}", "", "", float(rng.uniform(0.3, 1.0)))
+                        for t in types
+                        if rng.random() < 0.8
+                    ]
+                    for c, _ in rec.choose(cands, stats, policy, rng):
+                        up = rng.random() < (0.8 if c.type in fav else 0.2)
+                        lk, dk = stats.get(c.type, (0, 0))
+                        stats[c.type] = (lk + up, dk + (not up))
+                        if day < 7:
+                            first.append(up)
+                        elif day >= days - 7:
+                            last.append(up)
+            if scenario == "stable":
+                res["week1_acceptance"] = round(float(np.mean(first)), 3)
+                res["week4_acceptance"] = round(float(np.mean(last)), 3)
+            else:
+                res["after_change_acceptance"] = round(float(np.mean(last)), 3)
+        out[policy] = res
+    return {"users": n_users, "policies": out}
+
+
 def run(n_generated: int = 30, n_noise: int = 10, quick: bool = False) -> dict:
     t0 = time.perf_counter()
     users = make_users(n_generated, n_noise)
@@ -274,6 +322,7 @@ def run(n_generated: int = 30, n_noise: int = 10, quick: bool = False) -> dict:
         "tasks": task_metrics(users if not quick else curve_users),
         "traits": trait_metrics(users),
         "time_of_day": rhythm_metrics(users),
+        "adaptation": adaptation_metrics(n_users=100 if quick else 300),
     }
     result["seconds"] = round(time.perf_counter() - t0, 1)
     return result
@@ -333,6 +382,12 @@ def main() -> None:
         f"rhythm vs {t['slot_mae_without']:.3f} without ({t['slot_improvement']:+.0%}), "
         f"n={t['n_slot_checks']}"
     )
+    print("Adaptation (thumbs-up share of shown recommendations, week 1 -> week 4):")
+    for name, v in r["adaptation"]["policies"].items():
+        print(
+            f"  {name:<10} {v['week1_acceptance']:.0%} -> {v['week4_acceptance']:.0%}; "
+            f"after tastes change {v['after_change_acceptance']:.0%}"
+        )
     print(f"({r['seconds']}s) -> {out}")
 
 

@@ -337,3 +337,65 @@ export interface Dashboard {
   last_run: JobRun | null;
   pending_count: number;
 }
+
+// ---------- Phase 4: recommendations, what-if, privacy ----------
+
+export interface Recommendation {
+  id: string;
+  for_date: string;
+  type: string;
+  text: string;
+  reason: string | null;
+  rank: number | null;
+  feedback: 1 | -1 | null;
+  created_at: string;
+}
+
+/** What the twin has learned about one kind of advice from your thumbs. */
+export interface TypeLearning {
+  type: string;
+  label: string;
+  likes: number;
+  dislikes: number;
+  preference: number; // 0..1, 0.5 = no opinion yet
+}
+
+export interface Recommendations {
+  for_date: string | null;
+  items: Recommendation[];
+  learning: TypeLearning[];
+  policy: string;
+}
+
+export interface WhatIfControl {
+  key: string;
+  label: string;
+  unit: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  source: string;
+}
+
+export interface WhatIfResult {
+  value: number;
+  baseline: number;
+  delta: number;
+  low: number;
+  high: number;
+  model_kind: string;
+  learned: boolean;
+  contributors: Contributor[];
+  summary: string | null;
+  time_of_day: TimeOfDay | null;
+}
+
+export interface WhatIf {
+  controls: WhatIfControl[];
+  results: Record<string, WhatIfResult>;
+  applied: Record<string, number>;
+  clipped: string[];
+  note: string | null;
+  ms: number;
+}

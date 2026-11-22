@@ -83,9 +83,12 @@ class Prediction(Base):
 
 
 class Recommendation(Base):
+    """Up to 3 per day (ml/recommend.py). Feedback 1 / -1 trains the per-type preference."""
+
     __tablename__ = "recommendations"
     __table_args__ = (
         Index("ix_recommendations_user_date", "user_id", "for_date"),
+        UniqueConstraint("user_id", "for_date", "key", name="uq_recommendation_key"),
         CheckConstraint("feedback IS NULL OR feedback IN (-1, 0, 1)", name="feedback_values"),
     )
 
@@ -93,9 +96,16 @@ class Recommendation(Base):
     user_id: Mapped[uuid.UUID] = user_fk()
     for_date: Mapped[date_type] = mapped_column(Date, nullable=False)
     type: Mapped[str] = mapped_column(String(40), nullable=False)
+    key: Mapped[str] = mapped_column(String(160), nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text)
+    evidence: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    relevance: Mapped[float | None] = mapped_column(Float)
+    score: Mapped[float | None] = mapped_column(Float)
+    rank: Mapped[int | None] = mapped_column(SmallInteger)
+    policy: Mapped[str | None] = mapped_column(String(12))
     feedback: Mapped[int | None] = mapped_column(SmallInteger)  # -1 / 0 / 1
+    feedback_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at_col()
 
 

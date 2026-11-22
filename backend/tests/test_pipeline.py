@@ -53,10 +53,12 @@ def test_seed_runs_full_pipeline(client):
             "backtest",
             "accuracy",
             "traits",
+            "rhythm",
+            "recommendations",
             "profile",
         ):
             assert run.steps[step]["status"] == "ok", (step, run.steps[step])
-        assert run.steps["recommendations"]["status"] == "skipped"
+        assert run.steps["recommendations"]["shown"] == 3
 
         pats = db.scalars(
             select(Insight).where(Insight.user_id == uid, Insight.type == "pattern")

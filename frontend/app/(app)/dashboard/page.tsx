@@ -18,6 +18,7 @@ import { AccuracyRing } from "@/components/twin/accuracy-ring";
 import { InsightCard } from "@/components/twin/insight-card";
 import { PersonalityCard } from "@/components/twin/personality-card";
 import { PredictionCard } from "@/components/twin/prediction-card";
+import { RecommendationsCard } from "@/components/twin/recommendations-card";
 import { SlotPrompt } from "@/components/twin/slot-prompt";
 import { TaskList } from "@/components/twin/task-list";
 import { TimeOfDayCard } from "@/components/twin/time-of-day-card";
@@ -45,6 +46,8 @@ export default function DashboardPage() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: qk.dashboard });
       qc.invalidateQueries({ queryKey: qk.pending });
+      qc.invalidateQueries({ queryKey: qk.recommendations });
+      qc.invalidateQueries({ queryKey: qk.whatif });
     },
   });
   const d = dash.data;
@@ -134,6 +137,7 @@ export default function DashboardPage() {
                   </Card>
                 )}
               </div>
+              <RecommendationsCard />
               <TimeOfDayCard daily={daily} rhythm={d.rhythm ?? []} accuracy={d.accuracy} />
               <TaskList tasks={tasks} />
             </section>

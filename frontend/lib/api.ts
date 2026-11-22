@@ -7,6 +7,8 @@ import type {
   ChatMessage,
   Checkin,
   CheckinDay,
+  Recommendations,
+  WhatIf,
   CheckinIn,
   ConfirmResult,
   Consent,
@@ -183,6 +185,14 @@ export const api = {
   deleteActivity: (id: string) => request<void>(`/activities/${id}`, { method: "DELETE" }),
 
   consents: () => request<Consent[]>("/privacy/consents"),
+  exportData: () => request<Record<string, unknown>>("/privacy/export"),
+  deleteMe: (confirm_email: string) => request<void>("/me", json("DELETE", { confirm_email })),
+  recommendations: () => request<Recommendations>("/recommendations"),
+  recommendationFeedback: (id: string, value: 1 | -1 | 0) =>
+    request<Recommendations>(`/recommendations/${id}/feedback`, json("POST", { value })),
+  whatif: () => request<WhatIf>("/whatif"),
+  simulate: (overrides: Record<string, number>) =>
+    request<WhatIf>("/whatif", json("POST", { overrides })),
   setConsent: (source: ConsentSource, allowed: boolean) =>
     request<Consent[]>("/privacy/consents", json("PUT", { source, allowed })),
 

@@ -1,4 +1,5 @@
 import logging
+import threading
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -17,6 +18,8 @@ from app.api import (
     intelligence,
     privacy,
     profile,
+    recommendations,
+    whatif,
 )
 from app.api.deps import DB
 from app.core.config import settings
@@ -33,6 +36,8 @@ async def lifespan(_app: FastAPI):
     # Load the local embedding model in the background (can take minutes on a cold
     # machine), then embed any messages that were saved while it was loading.
     embeddings.warm_up_in_background(lambda: embeddings.backfill_missing(SessionLocal))
+    # SHAP takes a few seconds to import; do it now so the first what-if answers quickly.
+    threading.Thread(target=lambda: __import__("shap"), name="warm-shap", daemon=True).start()
     nightly.start()  # nightly ML pipeline (SCHEDULER_ENABLED)
     yield
     nightly.stop()
@@ -80,6 +85,9 @@ for r in (
     decisions.router,
     intelligence.router,
     privacy.router,
+    privacy.me_router,
+    recommendations.router,
+    whatif.router,
     demo.router,
 ):
     app.include_router(r)

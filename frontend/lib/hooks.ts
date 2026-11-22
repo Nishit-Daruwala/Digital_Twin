@@ -13,6 +13,8 @@ export const qk = {
   decisions: ["decisions"] as const,
   dashboard: ["dashboard"] as const,
   pending: ["predictions", "pending"] as const,
+  recommendations: ["recommendations"] as const,
+  whatif: ["whatif"] as const,
 };
 
 export function useMe(enabled = true) {

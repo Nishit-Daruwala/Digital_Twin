@@ -24,7 +24,8 @@ import pandas as pd
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
-from app.ml import accuracy, anomaly, intraday, patterns, predict, store
+from app.core.config import settings
+from app.ml import accuracy, anomaly, intraday, patterns, predict, recommend, store
 from app.ml.explain import explain
 from app.ml.features import build_features, load_frames
 from app.ml.traits import compute_traits, quiz_prior
@@ -132,7 +133,11 @@ def _run_locked(session_factory, user_id, trigger, today, backtest_days) -> JobR
                     )
                 _step(steps, "accuracy", lambda: _accuracy(db, user_id, today))
                 _step(steps, "traits", lambda: _traits(db, user_id, f, acts, categories, data_days))
-                steps["recommendations"] = {"status": "skipped", "note": "Phase 4"}
+                _step(
+                    steps,
+                    "recommendations",
+                    lambda: recommend.generate(db, user_id, today, settings.recommend_policy),
+                )
             _step(steps, "profile", lambda: _profile(db, user_id, data_days))
             if any(s.get("status") == "error" for s in steps.values()):
                 status = "error"

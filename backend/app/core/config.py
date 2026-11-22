@@ -52,6 +52,9 @@ class Settings(BaseSettings):
     # Insight sentences: LLM rewording of the evidence (numbers are verified against it),
     # falling back to a fixed template if the LLM is unavailable or invents a number.
     insight_llm_wording: bool = True
+    # Recommendations: "thompson" (Thompson sampling, default) or "weights" (the plan's fixed
+    # +0.1 / -0.15 per thumbs rule). ml/evaluate.py compares both.
+    recommend_policy: str = "thompson"
 
     app_env: str = "development"  # development / test / production
 

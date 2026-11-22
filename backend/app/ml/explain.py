@@ -48,7 +48,9 @@ def describe(
     if column == "tasks_that_day":
         return f"Tasks planned that day: {fmt_value('tasks_planned', value)}"
     base, kind = split_feature(column)
-    when = {"": " today", "r3": " (3-day avg)", "r7": " (7-day avg)"}.get(kind, "")
+    when = {"": " today", "r3": " (3-day avg)", "r7": " (7-day avg)", "r28": " (4-week avg)"}.get(
+        kind, ""
+    )
     name = feature_name(base, categories)
     return f"{name}{when}: {fmt_value(base, value)}"
 

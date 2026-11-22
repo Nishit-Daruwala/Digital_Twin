@@ -13,3 +13,7 @@ class ConsentIn(BaseModel):
 class ConsentOut(BaseModel):
     source: ConsentSource
     allowed: bool
+
+
+class DeleteMeIn(BaseModel):
+    confirm_email: str  # must match the account email: deleting is permanent

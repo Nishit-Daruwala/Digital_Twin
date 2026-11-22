@@ -9,7 +9,8 @@ activity logs and chat, then predicts and recommends.
 | 2. Learning inputs: chat + RAG memory, decisions, synthetic data, features | 3–4 | ✅ Done |
 | 3. Core intelligence: patterns, anomalies, predictions, SHAP, traits, accuracy | 5–6 | ✅ Done |
 | 3.5 Time of day: check-in slots, daily rhythm, tomorrow by part of the day | — | ✅ Done |
-| 4. Adapt & ship: recommendations, what-if, privacy, deploy | 7–8 | ⏳ |
+| 4a. Adapt: recommendations, what-if, export/delete, adaptation + extraction evaluation, e2e | 7 | ✅ Done |
+| 4b. Ship: deploy, polish, accessibility, final charts | 8 | ⏳ |
 
 ## Stack
 
@@ -122,6 +123,15 @@ can be skipped. Slots follow the user's timezone, which the browser sets on firs
 | **Tomorrow by time of day** | The daily prediction plus the person's slot offset. Scored per slot against the check-in made in that slot; back-tested days use only the rhythm known the evening before. |
 | **Rhythm statements** | "Your energy is usually higher in the morning than in the evening (3.6 vs 2.7, on 21 days you checked in at both)": a paired Wilcoxon test over 8+ days, Bonferroni-corrected, with a difference of at least 0.4 points. |
 
+### Recommendations, what-if and privacy (Phase 4)
+
+| Piece | How |
+|---|---|
+| **Recommendations** (`ml/recommend.py`) | Up to 3 a day, generated from the twin's own outputs: a lighter-day plan when tomorrow is predicted low, your best part of the day for hard work (time-of-day rhythm, else chronotype), padding time estimates (optimism bias), a check-in after an unusual stretch, acting on a discovered pattern (activities, sleep, start time; phrased as a pattern, not a cause), and stated goals that the last 7 days fall short of. Every reason quotes your own numbers. |
+| **Learning from 👍 / 👎** | Score = relevance × preference. Default: discounted Thompson sampling, preference ~ Beta(2 + likes, 2 + dislikes) with each rating fading 5% a day. The plan's fixed weights (+0.1 / −0.15, clamped 0.2–2) are kept as `RECOMMEND_POLICY=weights`. One per type, a 👎 replaces the suggestion immediately and it doesn't return for 7 days. No medical or financial advice. |
+| **What-if** (`ml/whatif.py`) | Same models and inputs as tomorrow's prediction (no changes = the dashboard's numbers). Only inputs a learned model uses become sliders, ranged to values you've actually had; if the twin predicts from your average alone it says so instead of showing sliders that do nothing. Shows the change, SHAP reasons and the time-of-day view; about 50 ms per change after the first. |
+| **Privacy** | `GET /privacy/export` downloads everything as JSON (no password hash, no embeddings). `DELETE /me` needs your email typed, deletes every row (cascade) and the saved model files. |
+
 ### Evaluation (against planted ground truth)
 
 ```bash
@@ -139,12 +149,20 @@ python -m app.ml.evaluate          # 34 users + 10 noise users, about 3 minutes
 | Best energy slot learned (time of day) | 100% of 33 users | (reported) |
 | Rhythm statements found and correct / false on noise users | 100% / 0 | (reported) |
 | Predicting a check-in from the same day's others | 25% lower error with the rhythm | beats ignoring time of day |
+| Adaptation: 👍 share of shown suggestions, week 1 → 4 (simulated users) | no learning 40% → 40%; plan weights 44% → 51%; Thompson 43% → 51% (ceiling ≈ 57%) | improves with feedback |
+| Adaptation after tastes change (week 6) | no learning 41%; plan weights 46%; Thompson 46% | adapts |
+| Extraction precision / recall on 50 labelled messages | offline regex stand-in: 96% / 58%; OpenAI: run after label review | (reported) |
 
 `backend/notebooks/evaluation.ipynb` has the charts. A quick version runs in CI
 (`tests/test_evaluation.py`) and fails the build if recall drops below 80%, a noise user gets
 more than one insight, the twin stops beating the baseline, or the time-of-day rhythm is no
 longer learned. The planted rhythms are clear by construction (energy moves up to 1 point
 through the day), so real users will be noisier than these numbers.
+
+Honest note on adaptation: Thompson sampling learns as well as the plan's fixed weights but
+not better in these simulations (both reach most of the ≈57% ceiling; 2 liked types for 3
+slots). It is the default because it explores untried advice in a principled way and, with
+fading feedback, keeps up when tastes change.
 
 Honest note on recall: before time of day, every synthetic user checked in once a day in the same
 slot and recall was 84%. Now 15% of daily check-ins happen at an unusual time and some days add
@@ -161,7 +179,7 @@ planted effects are scaled up (`strength` in `PERSONAS`) so the patterns are cle
 ## Tests
 
 ```bash
-cd backend && pytest              # 130+ tests against a real Postgres (twin_test DB), no API calls
+cd backend && pytest              # 175 tests against a real Postgres (twin_test DB), no API calls
 ruff check . && ruff format --check .
 cd frontend && npm run lint && npx tsc --noEmit && npm run build
 ```
@@ -180,7 +198,19 @@ The backend tests include:
   filtered by user returned 0 of 3 memories in this test.
 
 Tests always use the fake LLM and fake embeddings, so they never need an API key.
-CI (GitHub Actions) runs all of the above on every push and pull request.
+
+End-to-end (Playwright, `frontend/e2e/`): register → onboard → check-in → chat → dashboard →
+what-if → export, and a demo twin where a 👎 replaces a suggestion, a what-if slider moves the
+prediction and deleting the account works. Start both servers (backend with
+`LLM_PROVIDER=fake`), then `cd frontend && npm run e2e` (add `PW_CHANNEL=msedge` to use the
+installed Edge instead of downloading Chromium).
+
+Extraction benchmark: `python -m app.ml.extraction_eval` runs the 50 labelled messages in
+`backend/evals/extraction_cases.json` through the configured LLM (a few cents with OpenAI);
+`--provider fake` runs the offline stand-in.
+
+CI (GitHub Actions) runs lint, type checks, the backend tests, the quick evaluation and the
+Playwright tests on every push and pull request.
 
 ## Known limitations
 
@@ -224,6 +254,11 @@ CI (GitHub Actions) runs all of the above on every push and pull request.
 | GET / POST | `/decisions` | List / add decisions |
 | PATCH / DELETE | `/decisions/{id}` | Rate the outcome (1–5) / remove |
 | GET / PUT | `/privacy/consents` | Per-source learning consent |
+| GET | `/privacy/export` | Download all your data as JSON |
+| DELETE | `/me` | Delete the account and everything in it (`{"confirm_email": ...}`) |
+| GET | `/recommendations` | Tomorrow's suggestions + what the twin learned from your thumbs |
+| POST | `/recommendations/{id}/feedback` | `{"value": 1 \| -1 \| 0}`; a 👎 refills the list |
+| GET / POST | `/whatif` | Sliders + baseline / predictions with `{"overrides": {...}}` |
 | POST | `/demo/seed` | Replace your data with a synthetic persona (when `DEMO_ENABLED=true`) |
 | GET | `/dashboard` | Accuracy, tomorrow's predictions, insights, traits, charts |
 | GET | `/insights` | Active patterns and anomalies with their evidence |

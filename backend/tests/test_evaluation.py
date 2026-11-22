@@ -36,3 +36,11 @@ def test_time_of_day_rhythm_is_learned(result):
     assert t["statement_recall"] >= 0.8, t
     assert t["false_statements_max"] <= 1, t["false_statements"]
     assert t["slot_mae_with_rhythm"] < t["slot_mae_without"], t  # the rhythm helps
+
+
+def test_recommendations_adapt_to_feedback(result):
+    p = result["adaptation"]["policies"]
+    for policy in ("weights", "thompson"):
+        assert p[policy]["week4_acceptance"] > p[policy]["week1_acceptance"] + 0.04, p
+        assert p[policy]["week4_acceptance"] > p["relevance"]["week4_acceptance"] + 0.05, p
+        assert p[policy]["after_change_acceptance"] > p["relevance"]["after_change_acceptance"], p

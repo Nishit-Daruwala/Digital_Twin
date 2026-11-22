@@ -55,7 +55,7 @@ _SAME_DAY_TASK_COLS = {"tasks_planned", "tasks_completed", "plan_ratio", "active
 
 def split_feature(name: str) -> tuple[str, str]:
     """'mood_lag1' -> ('mood', 'lag1'), 'focus_r7' -> ('focus', 'r7'), 'sleep_hours' -> (.., '')."""
-    for suffix in ("_lag1", "_lag2", "_r3", "_r7"):
+    for suffix in ("_lag1", "_lag2", "_r3", "_r7", "_r28"):
         if name.endswith(suffix):
             return name[: -len(suffix)], suffix[1:]
     return name, ""
@@ -67,7 +67,7 @@ def is_leaky(feature: str, target: str) -> bool:
     Pattern mining and models must skip these pairs. Rolling means (r3/r7) include today.
     """
     base, kind = split_feature(feature)
-    same_day = kind in ("", "r3", "r7")
+    same_day = kind in ("", "r3", "r7", "r28")
     if base == target and same_day:
         return True
     if target == "completion_rate" and same_day:

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Database, LogOut } from "lucide-react";
+import { AlertTriangle, Check, Database, Download, LogOut, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { qk, useMe } from "@/lib/hooks";
 import type { Consent, ConsentSource, Persona } from "@/lib/types";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { FormError } from "@/components/ui/alert";
 import { Skeleton, Spinner } from "@/components/spinner";
@@ -150,12 +151,11 @@ export default function SettingsPage() {
         <FormError message={consents.error?.message ?? toggle.error?.message} className="mt-3" />
       </Section>
 
+      <YourData email={me?.user.email ?? ""} />
+
       <DemoData />
 
-      <Section
-        title="Session"
-        description="Data export and twin deletion arrive in a later phase."
-      >
+      <Section title="Session" description="Log out on this device.">
         <Button variant="outline" onClick={logout}>
           <LogOut /> Log out
         </Button>
@@ -170,6 +170,83 @@ const PERSONAS: { key: Persona; title: string; desc: string }[] = [
   { key: "founder", title: "Founder", desc: "Stress builds two days before mood drops; exercise lifts the next day." },
   { key: "noise", title: "Control (random)", desc: "No hidden patterns at all. A good twin should find nothing." },
 ];
+
+function YourData({ email }: { email: string }) {
+  const router = useRouter();
+  const qc = useQueryClient();
+  const [confirm, setConfirm] = useState("");
+  const exp = useMutation({
+    mutationFn: api.exportData,
+    onSuccess: (data) => {
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `twin-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    },
+  });
+  const del = useMutation({
+    mutationFn: () => api.deleteMe(confirm),
+    onSuccess: () => {
+      api.logout();
+      qc.clear();
+      router.replace("/login");
+    },
+  });
+  const matches = !!email && confirm.trim().toLowerCase() === email.toLowerCase();
+  return (
+    <Section
+      title="Your data"
+      description="Download everything Twin stores about you, or delete your twin for good."
+    >
+      <Card className="flex flex-col divide-y">
+        <div className="flex flex-col gap-3 p-5 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-medium">Export</p>
+            <p className="text-sm text-muted-foreground">
+              Check-ins, activities, chat, decisions, insights, predictions and suggestions, as
+              one JSON file.
+            </p>
+          </div>
+          <Button variant="outline" onClick={() => exp.mutate()} disabled={exp.isPending}>
+            {exp.isPending ? <Spinner /> : <Download />} Download my data
+          </Button>
+        </div>
+        <div className="flex flex-col gap-3 p-5">
+          <div>
+            <p className="text-sm font-medium text-destructive">Delete my twin</p>
+            <p className="text-sm text-muted-foreground">
+              Permanently removes your account, all your data and your twin&apos;s models. This
+              can&apos;t be undone. Type your email to confirm.
+            </p>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <Input
+              aria-label="Type your email to confirm"
+              placeholder={email}
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              autoComplete="off"
+            />
+            <Button
+              variant="destructive"
+              onClick={() => del.mutate()}
+              disabled={!matches || del.isPending}
+            >
+              {del.isPending ? <Spinner className="text-destructive-foreground" /> : <Trash2 />}
+              Delete everything
+            </Button>
+          </div>
+        </div>
+      </Card>
+      <FormError message={exp.error?.message ?? del.error?.message} className="mt-3" />
+    </Section>
+  );
+}
 
 function TimezoneSetting({ current }: { current: string | null }) {
   const qc = useQueryClient();

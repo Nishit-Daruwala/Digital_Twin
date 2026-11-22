@@ -88,6 +88,7 @@ def feature_name(column: str, categories: list[str]) -> str:
         "lag2": " (2 days ago)",
         "r3": " (3-day avg)",
         "r7": " (7-day avg)",
+        "r28": " (4-week avg)",
     }.get(kind, "")
     cat = category_name(base, categories)
     if cat:
