@@ -62,3 +62,36 @@ def test_register_creates_default_consents(client):
     consents = client.get("/privacy/consents", headers=auth(tokens)).json()
     assert {c["source"] for c in consents} == {"chat", "checkin", "activities", "decisions"}
     assert all(c["allowed"] for c in consents)
+
+
+def test_login_is_rate_limited_per_account(client):
+    from app.core.config import settings
+
+    register(client, email="guess@example.com")
+    bad = {"email": "guess@example.com", "password": "wrong-password"}
+    codes = [
+        client.post("/auth/login", json=bad).status_code
+        for _ in range(settings.login_rate_limit_per_min)
+    ]
+    assert set(codes) == {401}
+    r = client.post("/auth/login", json={**bad, "email": "GUESS@example.com"})
+    assert r.status_code == 429 and int(r.headers["Retry-After"]) >= 1
+    # even the right password waits: the limit protects the account, not the attempt
+    ok = client.post("/auth/login", json={**bad, "password": "password123"})
+    assert ok.status_code == 429
+    # other accounts are unaffected
+    register(client, email="other@example.com")
+    r = client.post("/auth/login", json={"email": "other@example.com", "password": "password123"})
+    assert r.status_code == 200
+
+
+def test_register_is_rate_limited_per_ip(client, monkeypatch):
+    from app.api import auth as auth_api
+
+    monkeypatch.setattr(auth_api.register_per_ip, "limit", 2)
+    register(client, email="r1@example.com")
+    register(client, email="r2@example.com")
+    r = client.post(
+        "/auth/register", json={"email": "r3@example.com", "password": "password123", "name": "X"}
+    )
+    assert r.status_code == 429 and "Retry-After" in r.headers

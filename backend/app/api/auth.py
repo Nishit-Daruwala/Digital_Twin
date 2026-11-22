@@ -1,9 +1,10 @@
 import jwt
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.api.deps import DB
+from app.core.config import settings
 from app.core.security import (
     burn_password_check,
     create_token,
@@ -13,8 +14,14 @@ from app.core.security import (
 )
 from app.models import CONSENT_SOURCES, Consent, TwinProfile, User
 from app.schemas.auth import AccessToken, LoginIn, RefreshIn, RegisterIn, TokenPair
+from app.services.rate_limit import RateLimiter, client_ip
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+# Password guessing: a cap per account (any IP) and per IP (any account).
+login_per_account = RateLimiter(settings.login_rate_limit_per_min, window_s=60)
+login_per_ip = RateLimiter(settings.login_rate_limit_per_min * 3, window_s=60)
+register_per_ip = RateLimiter(settings.register_rate_limit_per_hour, window_s=3600)
 
 
 def _tokens(user: User) -> TokenPair:
@@ -25,7 +32,8 @@ def _tokens(user: User) -> TokenPair:
 
 
 @router.post("/register", response_model=TokenPair, status_code=status.HTTP_201_CREATED)
-def register(body: RegisterIn, db: DB) -> TokenPair:
+def register(body: RegisterIn, db: DB, request: Request) -> TokenPair:
+    register_per_ip.enforce(client_ip(request), "Too many new accounts from this network.")
     if db.scalar(select(User).where(User.email == body.email)):
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
 
@@ -44,7 +52,9 @@ def register(body: RegisterIn, db: DB) -> TokenPair:
 
 
 @router.post("/login", response_model=TokenPair)
-def login(body: LoginIn, db: DB) -> TokenPair:
+def login(body: LoginIn, db: DB, request: Request) -> TokenPair:
+    login_per_ip.enforce(client_ip(request), "Too many login attempts.")
+    login_per_account.enforce(body.email.lower(), "Too many login attempts for this account.")
     user = db.scalar(select(User).where(User.email == body.email))
     if user is None:
         burn_password_check(body.password)  # same response time as a wrong password

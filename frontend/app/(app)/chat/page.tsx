@@ -329,7 +329,7 @@ function Composer({
           type="submit"
           disabled={disabled || !value.trim() || over}
           aria-label="Send"
-          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-[background-color,transform,opacity] duration-150 hover:bg-[hsl(17_86%_40%)] active:scale-95 disabled:opacity-35"
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground transition-[background-color,transform,opacity] duration-150 hover:bg-[hsl(17_86%_35%)] active:scale-95 disabled:opacity-35"
         >
           <ArrowUp className="h-5 w-5" strokeWidth={2.4} />
         </button>

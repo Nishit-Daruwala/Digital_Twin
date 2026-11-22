@@ -68,7 +68,27 @@ def test_production_rejects_weak_jwt_secret():
         Settings(app_env="production", jwt_secret="change-me")
     with pytest.raises(ValidationError):
         Settings(app_env="production", jwt_secret="short")
-    Settings(app_env="production", jwt_secret="x" * 40)  # ok
+    ok = {"jwt_secret": "x" * 40, "cors_origins": "https://twin.example.com"}
+    Settings(app_env="production", llm_provider="fake", embedding_provider="fake", **ok)
+
+
+def test_production_requires_explicit_origins_and_openai_key():
+    ok = {"jwt_secret": "x" * 40, "llm_provider": "fake", "embedding_provider": "fake"}
+    with pytest.raises(ValidationError):
+        Settings(app_env="production", cors_origins="*", **ok)
+    with pytest.raises(ValidationError):
+        Settings(app_env="production", cors_origins=" , ", **ok)
+    with pytest.raises(ValidationError):  # chat would fail at runtime without a key
+        Settings(
+            app_env="production",
+            cors_origins="https://twin.example.com",
+            jwt_secret="x" * 40,
+            llm_provider="openai",
+            embedding_provider="fake",
+            openai_api_key="",
+        )
+    with pytest.raises(ValidationError):
+        Settings(recommend_policy="random")
 
 
 # ---------- auth edge cases ----------

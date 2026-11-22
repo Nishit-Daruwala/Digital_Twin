@@ -13,7 +13,7 @@
     --card: 0 0% 100%;
     --card-foreground: 222 45% 16%;
 
-    --primary: 17 86% 45%; /* tangerine, AA contrast with white text */
+    --primary: 17 86% 40%; /* tangerine #be400e: 4.9:1+ on every surface and with white text (WCAG AA) */
     --primary-foreground: 0 0% 100%;
     --primary-soft: 24 100% 96%; /* tinted backgrounds */
 
@@ -30,7 +30,7 @@
 
     --border: 40 14% 88%;
     --input: 40 10% 80%;
-    --ring: 17 86% 45%;
+    --ring: 17 86% 40%;
     --radius: 0.5rem;
   }
 
@@ -53,6 +53,13 @@
   h2,
   h3 {
     @apply tracking-tight;
+  }
+
+  /* Visible keyboard focus everywhere (components with their own ring override this). */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 
   ::selection {

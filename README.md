@@ -10,7 +10,7 @@ activity logs and chat, then predicts and recommends.
 | 3. Core intelligence: patterns, anomalies, predictions, SHAP, traits, accuracy | 5–6 | ✅ Done |
 | 3.5 Time of day: check-in slots, daily rhythm, tomorrow by part of the day | — | ✅ Done |
 | 4a. Adapt: recommendations, what-if, export/delete, adaptation + extraction evaluation, e2e | 7 | ✅ Done |
-| 4b. Ship: deploy, polish, accessibility, final charts | 8 | ⏳ |
+| 4b. Ship: polish, accessibility, rate limits, evaluation charts, demo script (deployment deferred) | 8 | ✅ Done |
 
 ## Stack
 
@@ -153,7 +153,8 @@ python -m app.ml.evaluate          # 34 users + 10 noise users, about 3 minutes
 | Adaptation after tastes change (week 6) | no learning 41%; plan weights 46%; Thompson 46% | adapts |
 | Extraction precision / recall on 50 labelled messages | offline regex stand-in: 96% / 58%; OpenAI: run after label review | (reported) |
 
-`backend/notebooks/evaluation.ipynb` has the charts. A quick version runs in CI
+`backend/notebooks/evaluation.ipynb` has the charts (learning curve, recall by pattern,
+time of day, adaptation, extraction) and saves each one to `docs/figures/` for the report. A quick version runs in CI
 (`tests/test_evaluation.py`) and fails the build if recall drops below 80%, a noise user gets
 more than one insight, the twin stops beating the baseline, or the time-of-day rhythm is no
 longer learned. The planted rhythms are clear by construction (energy moves up to 1 point
@@ -179,7 +180,7 @@ planted effects are scaled up (`strength` in `PERSONAS`) so the patterns are cle
 ## Tests
 
 ```bash
-cd backend && pytest              # 175 tests against a real Postgres (twin_test DB), no API calls
+cd backend && pytest              # 178 tests against a real Postgres (twin_test DB), no API calls
 ruff check . && ruff format --check .
 cd frontend && npm run lint && npx tsc --noEmit && npm run build
 ```
@@ -209,8 +210,16 @@ Extraction benchmark: `python -m app.ml.extraction_eval` runs the 50 labelled me
 `backend/evals/extraction_cases.json` through the configured LLM (a few cents with OpenAI);
 `--provider fake` runs the offline stand-in.
 
+Accessibility (`frontend/e2e/accessibility.spec.ts`): an axe-core scan (WCAG 2.1 A and AA) of
+the login and register pages and of every app page with a demo twin loaded. Any serious or
+critical violation fails the test. It also checks page titles and the skip link. The app has
+visible keyboard focus everywhere, a "Skip to content" link, labelled controls and live regions
+for updates, and it honours reduced-motion settings.
+
 CI (GitHub Actions) runs lint, type checks, the backend tests, the quick evaluation and the
-Playwright tests on every push and pull request.
+Playwright tests (happy path and accessibility) on every push and pull request.
+
+The 5-minute demo, with what to click and say, is in [`docs/demo-script.md`](docs/demo-script.md).
 
 ## Known limitations
 
@@ -218,7 +227,7 @@ Playwright tests on every push and pull request.
   right day, or log it on the Log page.
 - The chat page loads the latest 100 messages. Older history is kept and used for memory, but isn't
   shown yet.
-- The chat rate limiter is in-memory, per server process (fine for one instance).
+- Rate limits are in-memory, per server process (fine for one instance; use Redis to scale out).
 - Task completion is hard to predict in advance (AUC ~0.6); the twin falls back to your personal completion rate unless a model is significantly better.
 - Time-of-day forecasts need some days with 2+ check-ins; until then the dashboard only explains
   how to unlock them. Skipping a slot is remembered on that device only.
@@ -230,7 +239,15 @@ Playwright tests on every push and pull request.
 
 - The user id always comes from the JWT, never from the request body. Every query filters on it.
 - Another user's rows return 404, not 403, so nobody can tell whether a row exists.
-- When `APP_ENV=production`, the server refuses to start with a weak `JWT_SECRET` or a wildcard CORS origin.
+- When `APP_ENV=production`, the server refuses to start with a weak `JWT_SECRET`, a wildcard or
+  empty CORS origin list, or an `openai` provider without `OPENAI_API_KEY`. It logs a warning if
+  demo data is enabled.
+- Rate limits (429 with `Retry-After`): login 10 attempts a minute per account and 30 per IP,
+  20 new accounts an hour per IP, chat 20 messages a minute, what-if 120 changes a minute,
+  retrain 2 a minute, demo data 3 loads a minute. Every setting is documented in
+  `backend/.env.example`.
+- Responses carry `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY` and
+  `Referrer-Policy: no-referrer`; unhandled errors return a generic 500 (details are only logged).
 - Secrets live in `.env` files, which git ignores. Only the `.env.example` templates are committed.
 - The LLM receives only the current message, a few recent turns and retrieved snippets, never the
   whole history. No name or email is ever put in a prompt.

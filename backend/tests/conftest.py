@@ -23,10 +23,10 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
-from app.api.chat import limiter  # noqa: E402
 from app.core.config import settings  # noqa: E402
 from app.db import get_db, get_session_factory  # noqa: E402
 from app.main import app  # noqa: E402
+from app.services.rate_limit import reset_all  # noqa: E402
 
 BACKEND_DIR = Path(__file__).resolve().parents[1]
 TEST_URL = settings.test_database_url
@@ -55,7 +55,7 @@ def migrated_db() -> Iterator[None]:
 
 @pytest.fixture(autouse=True)
 def clean_tables() -> Iterator[None]:
-    limiter.reset()
+    reset_all()
     yield
     with engine.begin() as conn:
         conn.execute(text("TRUNCATE users CASCADE"))

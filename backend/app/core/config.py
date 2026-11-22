@@ -1,3 +1,4 @@
+import logging
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
@@ -35,8 +36,13 @@ class Settings(BaseSettings):
     embedding_dim: int = 384
     local_embedding_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
-    # Chat
+    # Rate limits (per process). Chat: messages per user per minute. Login: attempts per
+    # account per minute (and 3x that per IP). Register: new accounts per IP per hour.
     chat_rate_limit_per_min: int = 20
+    login_rate_limit_per_min: int = 10
+    register_rate_limit_per_hour: int = 20
+
+    # Chat memory
     memory_top_k: int = 5
     memory_max_distance: float = 0.75  # cosine distance; larger = less similar
 
@@ -54,9 +60,9 @@ class Settings(BaseSettings):
     insight_llm_wording: bool = True
     # Recommendations: "thompson" (Thompson sampling, default) or "weights" (the plan's fixed
     # +0.1 / -0.15 per thumbs rule). ml/evaluate.py compares both.
-    recommend_policy: str = "thompson"
+    recommend_policy: Literal["thompson", "weights", "relevance"] = "thompson"
 
-    app_env: str = "development"  # development / test / production
+    app_env: Literal["development", "test", "production"] = "development"
 
     @property
     def cors_origin_list(self) -> list[str]:
@@ -68,8 +74,15 @@ class Settings(BaseSettings):
             weak = {"", "change-me", "dev-only-insecure-secret"}
             if self.jwt_secret in weak or len(self.jwt_secret) < 32:
                 raise ValueError("JWT_SECRET must be a random string of 32+ chars in production")
-            if "*" in self.cors_origin_list:
+            if not self.cors_origin_list or "*" in self.cors_origin_list:
                 raise ValueError("CORS_ORIGINS must list explicit origins in production")
+            uses_openai = "openai" in (self.llm_provider, self.embedding_provider)
+            if uses_openai and not self.openai_api_key:
+                raise ValueError("OPENAI_API_KEY is required when a provider is 'openai'")
+            if self.demo_enabled:
+                logging.getLogger("twin").warning(
+                    "DEMO_ENABLED is on in production: any user can load synthetic data"
+                )
         return self
 
 

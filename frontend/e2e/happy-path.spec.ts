@@ -1,27 +1,5 @@
-import { expect, test, type Page } from "@playwright/test";
-
-const PASSWORD = "password123";
-
-async function registerAndOnboard(page: Page) {
-  const email = `e2e-${Date.now()}-${Math.random().toString(36).slice(2, 7)}@example.com`;
-  await page.goto("/register");
-  await page.getByLabel("Name").fill("E2E Person");
-  await page.getByLabel("Email").fill(email);
-  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
-  await page.getByRole("button", { name: "Create account" }).click();
-  await page.waitForURL("**/onboarding");
-  await page.getByRole("button", { name: "Student", exact: true }).click();
-  await page.getByRole("button", { name: "Next" }).click();
-  await page.getByRole("button", { name: "Less stress" }).click();
-  await page.getByRole("button", { name: "Next" }).click();
-  await page.getByRole("button", { name: "Next" }).click();
-  for (const opt of ["Morning", "Mostly", "About right", "Mixed", "Workload"]) {
-    await page.getByRole("button", { name: opt, exact: true }).click();
-  }
-  await page.getByRole("button", { name: "Create my twin" }).click();
-  await page.waitForURL("**/checkin");
-  return email;
-}
+import { expect, test } from "@playwright/test";
+import { PASSWORD, loadDemo, registerAndOnboard } from "./helpers";
 
 // The plan's happy path: register → onboard → check-in → chat → dashboard (+ what-if, export).
 test("new user: onboard, check in, chat, dashboard, what-if, export", async ({ page }) => {
@@ -73,12 +51,7 @@ test("demo twin: suggestions learn from 👎, what-if responds, delete removes t
 }) => {
   const email = await registerAndOnboard(page);
 
-  await page.goto("/settings");
-  await page.getByRole("radio", { name: /Founder/ }).click();
-  await page.getByRole("radio", { name: "60 days" }).click();
-  await page.getByRole("button", { name: "Load demo data" }).click();
-  await page.getByRole("button", { name: "Replace my data" }).click();
-  await expect(page.getByText(/^Loaded/)).toBeVisible({ timeout: 150_000 });
+  await loadDemo(page, /Founder/, "60 days");
 
   // three suggestions with reasons; 👎 replaces one right away
   await page.goto("/dashboard");

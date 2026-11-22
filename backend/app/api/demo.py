@@ -10,8 +10,10 @@ from app.core.config import settings
 from app.db import get_session_factory
 from app.ml.pipeline import Busy, run_user
 from app.seed.synthetic_users import PERSONAS, seed_persona_into_user
+from app.services.rate_limit import RateLimiter
 
 router = APIRouter(prefix="/demo", tags=["demo"])
+seed_limiter = RateLimiter(limit=3, window_s=60)  # each seed retrains the whole twin
 
 
 class SeedIn(BaseModel):
@@ -48,6 +50,7 @@ def seed(
     twin's pipeline (with a 14-day back-test) so insights and predictions appear at once."""
     if not settings.demo_enabled:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Not found")
+    seed_limiter.enforce(str(user.id), "Demo data was loaded several times just now.")
     counts = seed_persona_into_user(db, user, body.persona, body.days)
     try:
         run = run_user(

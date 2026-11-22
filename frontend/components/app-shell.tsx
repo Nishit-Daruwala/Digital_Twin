@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -39,9 +40,19 @@ function initials(name: string) {
 export function AppShell({ me, children }: { me: Me; children: React.ReactNode }) {
   const pathname = usePathname();
   const active = (href: string) => pathname === href || pathname.startsWith(`${href}/`);
+  const page = NAV.find((n) => active(n.href));
+  useEffect(() => {
+    document.title = page ? `${page.label} · Twin` : "Twin";
+  }, [page]);
 
   return (
     <div className="min-h-dvh md:flex">
+      <a
+        href="#main"
+        className="fixed left-3 top-3 z-50 -translate-y-16 rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground shadow-card transition-transform focus:translate-y-0"
+      >
+        Skip to content
+      </a>
       {/* Desktop sidebar */}
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r bg-card md:flex">
         <div className="px-6 pb-6 pt-7">
@@ -101,7 +112,7 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-5xl flex-1 px-4 pb-28 pt-7 md:px-10 md:pb-12 md:pt-10">
+      <main id="main" tabIndex={-1} className="mx-auto outline-none w-full max-w-5xl flex-1 px-4 pb-28 pt-7 md:px-10 md:pb-12 md:pt-10">
         {/* Keyed by route so every page fades in on navigation */}
         <div key={pathname} className="animate-fade-up">
           {children}
@@ -110,7 +121,7 @@ export function AppShell({ me, children }: { me: Me; children: React.ReactNode }
 
       {/* Mobile bottom nav */}
       <nav
-        aria-label="Main"
+        aria-label="Main (mobile)"
         className="fixed inset-x-0 bottom-0 z-20 grid grid-cols-7 border-t bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden"
       >
         {NAV.map(({ href, label, icon: Icon }) => {
