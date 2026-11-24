@@ -3,10 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, Check, Database, Download, LogOut, Trash2 } from "lucide-react";
+import { AlertTriangle, Bell, Check, Database, Download, LogOut, Mail, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { qk, useMe } from "@/lib/hooks";
-import type { Consent, ConsentSource, Persona } from "@/lib/types";
+import type { Consent, ConsentSource, Me, Persona } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { PageHeader } from "@/components/app-shell";
 import { Button } from "@/components/ui/button";
@@ -105,9 +105,20 @@ export default function SettingsPage() {
 
       <Section
         title="Timezone"
-        description="Check-in slots (morning, afternoon, evening) follow your local time."
+        description="Check-in slots (morning, afternoon, evening) and the 8 PM reminder follow your local time."
       >
         <TimezoneSetting current={me?.user.timezone ?? null} />
+      </Section>
+
+      <Section
+        title="Reminders"
+        description="One email at 8 PM your time, only on days you haven't checked in. A single check-in is enough to skip it."
+      >
+        {me ? (
+          <ReminderSetting enabled={me.user.email_reminders} email={me.user.email} timezone={me.user.timezone} />
+        ) : (
+          <Skeleton className="h-24" />
+        )}
       </Section>
 
       <Section
@@ -245,6 +256,71 @@ function YourData({ email }: { email: string }) {
       </Card>
       <FormError message={exp.error?.message ?? del.error?.message} className="mt-3" />
     </Section>
+  );
+}
+
+function ReminderSetting({
+  enabled,
+  email,
+  timezone,
+}: {
+  enabled: boolean;
+  email: string;
+  timezone: string | null;
+}) {
+  const qc = useQueryClient();
+  const set = useMutation({
+    mutationFn: (email_reminders: boolean) => api.updateMe({ email_reminders }),
+    onMutate: (email_reminders) => {
+      const prev = qc.getQueryData<Me>(qk.me);
+      qc.setQueryData<Me>(qk.me, (m) => (m ? { ...m, user: { ...m.user, email_reminders } } : m));
+      return { prev };
+    },
+    onError: (_e, _v, ctx) => ctx?.prev && qc.setQueryData(qk.me, ctx.prev),
+    onSuccess: (m) => qc.setQueryData(qk.me, m),
+  });
+  const test = useMutation({ mutationFn: api.testReminder });
+  return (
+    <Card>
+      <div className="flex items-center justify-between gap-4 px-5 py-4">
+        <div className="flex items-start gap-3">
+          <Bell className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          <div>
+            <p id="reminder-label" className="text-sm font-semibold">
+              Check-in reminder email
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Sent to {email} at 8 PM ({(timezone ?? "UTC").replace(/_/g, " ")}).
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <span className="hidden w-14 text-right font-mono text-[11px] uppercase text-muted-foreground sm:inline">
+            {enabled ? "On" : "Off"}
+          </span>
+          <Switch
+            aria-labelledby="reminder-label"
+            checked={enabled}
+            disabled={set.isPending}
+            onCheckedChange={(v) => set.mutate(v)}
+          />
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-3 border-t px-5 py-3">
+        <Button variant="outline" size="sm" onClick={() => test.mutate()} disabled={test.isPending}>
+          {test.isPending ? <Spinner /> : <Mail />} Send me a test email
+        </Button>
+        {test.isSuccess && (
+          <span className="flex items-center gap-1 text-sm text-success" role="status">
+            <Check className="h-4 w-4" aria-hidden />
+            {test.data.provider === "smtp"
+              ? `Sent to ${test.data.sent_to}`
+              : "Email sending isn't set up on the server, so it was written to the server log"}
+          </span>
+        )}
+      </div>
+      <FormError message={set.error?.message ?? test.error?.message} className="mx-5 mb-4" />
+    </Card>
   );
 }
 

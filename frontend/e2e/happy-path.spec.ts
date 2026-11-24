@@ -32,6 +32,25 @@ test("new user: onboard, check in, chat, dashboard, what-if, export", async ({ p
     await expect(page.getByText("Nothing to simulate yet")).toBeVisible();
   });
 
+  await test.step("reminders: the 8 PM email can be switched off and on", async () => {
+    await page.goto("/settings");
+    const sw = page.getByRole("switch", { name: "Check-in reminder email" });
+    await expect(sw).toBeChecked();
+    const saved = page.waitForResponse((r) => r.url().endsWith("/me") && r.request().method() === "PATCH");
+    await sw.click();
+    expect((await (await saved).json()).user.email_reminders).toBe(false);
+    await expect(sw).not.toBeChecked();
+    await page.reload();
+    await expect(page.getByRole("switch", { name: "Check-in reminder email" })).not.toBeChecked();
+    await page.getByRole("switch", { name: "Check-in reminder email" }).click();
+    await expect(page.getByRole("switch", { name: "Check-in reminder email" })).toBeChecked();
+  });
+
+  await test.step("unsubscribe link: an invalid token explains what to do", async () => {
+    await page.goto("/reminders/off?token=not-a-real-token-1234567890");
+    await expect(page.getByText(/expired/)).toBeVisible();
+  });
+
   await test.step("export: the API answers with a JSON attachment (and a file downloads)", async () => {
     await page.goto("/settings");
     const res = page.waitForResponse((r) => r.url().endsWith("/privacy/export"));

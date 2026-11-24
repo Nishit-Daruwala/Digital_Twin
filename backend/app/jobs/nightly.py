@@ -22,6 +22,15 @@ def run_nightly() -> dict:
     return run_all(SessionLocal, trigger="nightly")
 
 
+def run_reminders() -> None:
+    from app.jobs.reminders import send_due
+
+    try:
+        send_due(SessionLocal)
+    except Exception:  # never let one bad run stop the scheduler
+        log.exception("reminder run failed")
+
+
 def start() -> None:
     global _scheduler
     if not settings.scheduler_enabled or _scheduler is not None:
@@ -39,8 +48,24 @@ def start() -> None:
         coalesce=True,
         misfire_grace_time=3600,
     )
+    if settings.reminders_enabled:
+        # Every 5 minutes: each user gets theirs at 8 PM in their own timezone.
+        _scheduler.add_job(
+            run_reminders,
+            "cron",
+            minute="*/5",
+            id="reminders",
+            max_instances=1,
+            coalesce=True,
+            misfire_grace_time=600,
+        )
     _scheduler.start()
-    log.info("nightly pipeline scheduled at %02d:00", settings.nightly_hour)
+    log.info(
+        "nightly pipeline scheduled at %02d:00; check-in reminders %s (email: %s)",
+        settings.nightly_hour,
+        f"at {settings.reminder_hour}:00 local" if settings.reminders_enabled else "off",
+        settings.email_provider,
+    )
 
 
 def stop() -> None:

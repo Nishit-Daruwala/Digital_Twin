@@ -172,7 +172,11 @@ export const api = {
   me: () => request<Me>("/me"),
   onboarding: (body: OnboardingIn) => request<TwinProfile>("/onboarding", json("POST", body)),
 
-  updateMe: (body: { timezone: string }) => request<Me>("/me", json("PATCH", body)),
+  updateMe: (body: { timezone?: string; email_reminders?: boolean }) =>
+    request<Me>("/me", json("PATCH", body)),
+  testReminder: () => request<{ sent_to: string; provider: string }>("/reminders/test", { method: "POST" }),
+  unsubscribe: (token: string) =>
+    request<{ email_reminders: boolean }>("/reminders/unsubscribe", json("POST", { token })),
   saveCheckin: (body: CheckinIn) => request<Checkin>("/checkins", json("POST", body)),
   checkinToday: () => request<CheckinDay>("/checkins/today"),
   checkins: (from?: string, to?: string) => request<Checkin[]>(`/checkins${qs({ from, to })}`),

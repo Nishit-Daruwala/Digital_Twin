@@ -25,11 +25,13 @@ class UserOut(BaseModel):
     name: str
     role: str | None
     timezone: str | None
+    email_reminders: bool
     created_at: datetime
 
 
 class MeUpdateIn(BaseModel):
-    timezone: str = Field(min_length=1, max_length=64)  # IANA name, e.g. "Asia/Kolkata"
+    timezone: str | None = Field(default=None, min_length=1, max_length=64)  # IANA name
+    email_reminders: bool | None = None  # the 8 PM "you haven't checked in" email
 
 
 class MeOut(BaseModel):

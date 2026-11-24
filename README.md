@@ -11,6 +11,7 @@ activity logs and chat, then predicts and recommends.
 | 3.5 Time of day: check-in slots, daily rhythm, tomorrow by part of the day | — | ✅ Done |
 | 4a. Adapt: recommendations, what-if, export/delete, adaptation + extraction evaluation, e2e | 7 | ✅ Done |
 | 4b. Ship: polish, accessibility, rate limits, evaluation charts, demo script (deployment deferred) | 8 | ✅ Done |
+| + Check-in reminder email at 8 PM on days without a check-in | — | ✅ Done |
 
 ## Stack
 
@@ -132,6 +133,29 @@ can be skipped. Slots follow the user's timezone, which the browser sets on firs
 | **What-if** (`ml/whatif.py`) | Same models and inputs as tomorrow's prediction (no changes = the dashboard's numbers). Only inputs a learned model uses become sliders, ranged to values you've actually had; if the twin predicts from your average alone it says so instead of showing sliders that do nothing. Shows the change, SHAP reasons and the time-of-day view; about 50 ms per change after the first. |
 | **Privacy** | `GET /privacy/export` downloads everything as JSON (no password hash, no embeddings). `DELETE /me` needs your email typed, deletes every row (cascade) and the saved model files. |
 
+### Check-in reminder email
+
+The twin needs at least one check-in a day to learn. At **8 PM in each user's own timezone**, users
+who haven't checked in at all that day get one short email with a "Check in now" button. One
+check-in in any part of the day (morning, afternoon or evening) means no email.
+
+| | |
+|---|---|
+| **When** | A scheduler job (`app/jobs/reminders.py`) runs every 5 minutes and sends between 20:00 and 22:00 local time, so a server restart around 8 PM doesn't lose the day's reminder. |
+| **Never twice** | A row in `reminders` (user + local date) is claimed before sending, so restarts or several workers can't send a second email the same day. Failed sends are recorded and not retried. |
+| **Not sent** | Reminders switched off (Settings → Reminders, or the email's one-click link), onboarding not finished, check-in consent off, an address that can't receive mail (the demo accounts use reserved domains), or 7 reminders in a row went unanswered (resumes after the next check-in). |
+| **Sending** | Python's standard `smtplib`, any SMTP service. `EMAIL_PROVIDER=console` (default) only prints the email to the server log. Settings has "Send me a test email". |
+| **Privacy** | The unsubscribe link holds a signed token that can only switch reminders off; it can't log in. Reminder history is in the data export and deleted with the account. |
+
+```bash
+python -m app.jobs.reminders --dry-run                 # who would get one right now
+python -m app.jobs.reminders --at 2026-11-24T14:35Z    # run as if it were that moment (UTC)
+```
+
+To send real email, set in `backend/.env` (Gmail example, with an app password):
+`EMAIL_PROVIDER=smtp`, `SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=587`, `SMTP_USERNAME=you@gmail.com`,
+`SMTP_PASSWORD=<app password>`, `EMAIL_FROM=Twin <you@gmail.com>`.
+
 ### Evaluation (against planted ground truth)
 
 ```bash
@@ -180,7 +204,7 @@ planted effects are scaled up (`strength` in `PERSONAS`) so the patterns are cle
 ## Tests
 
 ```bash
-cd backend && pytest              # 178 tests against a real Postgres (twin_test DB), no API calls
+cd backend && pytest              # 206 tests against a real Postgres (twin_test DB), no API calls
 ruff check . && ruff format --check .
 cd frontend && npm run lint && npx tsc --noEmit && npm run build
 ```
@@ -259,7 +283,7 @@ The 5-minute demo, with what to click and say, is in [`docs/demo-script.md`](doc
 | Method | Route | Purpose |
 |---|---|---|
 | POST | `/auth/register`, `/auth/login`, `/auth/refresh` | Tokens |
-| GET / PATCH | `/me` | User + twin profile / set the timezone |
+| GET / PATCH | `/me` | User + twin profile / set the timezone or `email_reminders` |
 | POST | `/onboarding` | Role, goals, categories, quiz (sets the starting trait estimates) |
 | POST / GET | `/checkins` | Save a slot's check-in (full or quick; date and slot default to now) / list with `?from&to` |
 | GET | `/checkins/today` | Today's three slots: which are done, started, current |
@@ -276,6 +300,8 @@ The 5-minute demo, with what to click and say, is in [`docs/demo-script.md`](doc
 | GET | `/recommendations` | Tomorrow's suggestions + what the twin learned from your thumbs |
 | POST | `/recommendations/{id}/feedback` | `{"value": 1 \| -1 \| 0}`; a 👎 refills the list |
 | GET / POST | `/whatif` | Sliders + baseline / predictions with `{"overrides": {...}}` |
+| POST | `/reminders/test` | Send yourself the check-in reminder now (3 an hour) |
+| POST | `/reminders/unsubscribe` | `{"token"}` from the email link: switch reminders off (no login) |
 | POST | `/demo/seed` | Replace your data with a synthetic persona (when `DEMO_ENABLED=true`) |
 | GET | `/dashboard` | Accuracy, tomorrow's predictions, insights, traits, charts |
 | GET | `/insights` | Active patterns and anomalies with their evidence |

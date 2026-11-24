@@ -20,6 +20,7 @@ from app.models import (
     MLModel,
     Prediction,
     Recommendation,
+    Reminder,
     TwinProfile,
 )
 from app.schemas.privacy import ConsentIn, ConsentOut, DeleteMeIn
@@ -39,6 +40,7 @@ EXPORT = [
     ("consents", Consent, ()),
     ("models", MLModel, ("path",)),
     ("pipeline_runs", JobRun, ()),
+    ("reminder_emails", Reminder, ()),
 ]
 
 

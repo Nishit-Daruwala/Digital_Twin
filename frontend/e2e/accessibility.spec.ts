@@ -30,7 +30,7 @@ async function scan(page: Page, name: string) {
 }
 
 test("public pages pass an axe scan", async ({ page }) => {
-  for (const path of ["/login", "/register"]) {
+  for (const path of ["/login", "/register", "/reminders/off?token=expired-or-invalid-token"]) {
     await page.goto(path);
     await scan(page, path);
   }

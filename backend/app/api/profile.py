@@ -30,10 +30,14 @@ def me(user: CurrentUser, db: DB) -> MeOut:
 
 @router.patch("/me", response_model=MeOut)
 def update_me(body: MeUpdateIn, user: CurrentUser, db: DB) -> MeOut:
-    """Set the timezone (the browser sends it), so check-in slots follow local time."""
-    if not valid_timezone(body.timezone):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown timezone")
-    user.timezone = body.timezone
+    """Set the timezone (the browser sends it, so check-in slots and the 8 PM reminder follow
+    local time) and/or switch the daily reminder email on or off."""
+    if body.timezone is not None:
+        if not valid_timezone(body.timezone):
+            raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Unknown timezone")
+        user.timezone = body.timezone
+    if body.email_reminders is not None:
+        user.email_reminders = body.email_reminders
     db.commit()
     return me(user, db)
 

@@ -1,7 +1,7 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, Float, Integer, String, Text
+from sqlalchemy import Boolean, Date, Float, Integer, String, Text, true
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -20,6 +20,11 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     role: Mapped[str | None] = mapped_column(Text)  # free text
     timezone: Mapped[str | None] = mapped_column(String(64))  # IANA name, from the browser
+    # 8 PM email when the day has no check-in (jobs/reminders.py). Settings or the email's
+    # unsubscribe link turn it off.
+    email_reminders: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true(), nullable=False
+    )
     created_at: Mapped[datetime] = created_at_col()
 
     profile: Mapped["TwinProfile"] = relationship(
@@ -49,3 +54,16 @@ class Consent(Base):
     source: Mapped[str] = mapped_column(String(20), primary_key=True)
     allowed: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     updated_at: Mapped[datetime] = updated_at_col()
+
+
+class Reminder(Base):
+    """One row per user per local day a reminder was due: claimed before sending, so a
+    restart or a second worker never sends twice."""
+
+    __tablename__ = "reminders"
+
+    user_id: Mapped[uuid.UUID] = user_fk(primary_key=True)
+    for_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    status: Mapped[str] = mapped_column(String(12), nullable=False)  # sending/sent/failed
+    detail: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at_col()

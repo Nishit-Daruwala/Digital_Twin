@@ -19,6 +19,7 @@ from app.api import (
     privacy,
     profile,
     recommendations,
+    reminders,
     whatif,
 )
 from app.api.deps import DB
@@ -87,6 +88,7 @@ for r in (
     privacy.router,
     privacy.me_router,
     recommendations.router,
+    reminders.router,
     whatif.router,
     demo.router,
 ):

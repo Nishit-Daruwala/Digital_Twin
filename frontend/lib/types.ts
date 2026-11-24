@@ -29,6 +29,7 @@ export interface User {
   name: string;
   role: string | null;
   timezone: string | null; // IANA name; set from the browser on first load
+  email_reminders: boolean; // 8 PM email on days without a check-in
   created_at: string;
 }
 

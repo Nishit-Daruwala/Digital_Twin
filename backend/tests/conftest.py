@@ -12,6 +12,7 @@ from pathlib import Path
 os.environ["LLM_PROVIDER"] = "fake"
 os.environ["EMBEDDING_PROVIDER"] = "fake"
 os.environ["DEMO_ENABLED"] = "true"
+os.environ["EMAIL_PROVIDER"] = "fake"  # reminder emails go to an in-memory outbox
 os.environ["SCHEDULER_ENABLED"] = "false"  # no background nightly job during tests
 os.environ["DEMO_BACKTEST_DAYS"] = "3"  # keep /demo/seed fast in tests
 os.environ["MODEL_STORE_DIR"] = tempfile.mkdtemp(prefix="twin-models-")

@@ -7,7 +7,7 @@ import jwt
 
 from app.core.config import settings
 
-TokenType = Literal["access", "refresh"]
+TokenType = Literal["access", "refresh", "unsubscribe"]
 
 
 def hash_password(password: str) -> str:
@@ -34,8 +34,10 @@ def create_token(user_id: uuid.UUID, token_type: TokenType) -> str:
     now = datetime.now(UTC)
     if token_type == "access":
         expires = now + timedelta(minutes=settings.access_token_minutes)
-    else:
+    elif token_type == "refresh":
         expires = now + timedelta(days=settings.refresh_token_days)
+    else:  # link in a reminder email: turns reminders off, nothing else
+        expires = now + timedelta(days=60)
     payload = {
         "sub": str(user_id),
         "type": token_type,

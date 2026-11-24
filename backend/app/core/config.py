@@ -3,7 +3,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
@@ -62,6 +62,24 @@ class Settings(BaseSettings):
     # +0.1 / -0.15 per thumbs rule). ml/evaluate.py compares both.
     recommend_policy: Literal["thompson", "weights", "relevance"] = "thompson"
 
+    # Daily check-in reminder: an email at REMINDER_HOUR (user's local time) when the day has
+    # no check-in. Sent until REMINDER_HOUR + REMINDER_WINDOW_HOURS so a restart doesn't skip it.
+    reminders_enabled: bool = True
+    reminder_hour: int = Field(default=20, ge=0, le=23)
+    reminder_window_hours: int = Field(default=2, ge=1, le=4)
+    reminder_pause_after: int = 7  # unanswered reminders in a row, then stop until a check-in
+    app_url: str = "http://localhost:3000"  # links in emails
+
+    # Email: "console" logs the email instead of sending (development), "smtp" sends it,
+    # "fake" keeps it in memory (tests).
+    email_provider: Literal["console", "smtp", "fake"] = "console"
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_starttls: bool = True
+    email_from: str = "Twin <no-reply@twin.local>"
+
     app_env: Literal["development", "test", "production"] = "development"
 
     @property
@@ -79,6 +97,8 @@ class Settings(BaseSettings):
             uses_openai = "openai" in (self.llm_provider, self.embedding_provider)
             if uses_openai and not self.openai_api_key:
                 raise ValueError("OPENAI_API_KEY is required when a provider is 'openai'")
+            if self.email_provider == "smtp" and not self.smtp_host:
+                raise ValueError("SMTP_HOST is required when EMAIL_PROVIDER=smtp")
             if self.demo_enabled:
                 logging.getLogger("twin").warning(
                     "DEMO_ENABLED is on in production: any user can load synthetic data"
