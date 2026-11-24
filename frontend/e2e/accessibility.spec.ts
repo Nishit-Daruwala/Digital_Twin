@@ -47,7 +47,21 @@ test("every app page passes an axe scan with demo data", async ({ page }) => {
     });
   }
   // keyboard: the first Tab lands on the skip link, which moves focus to the content
+  // (wait until the app has rendered: before that, only the loading screen exists)
   await page.goto("/dashboard");
-  await page.keyboard.press("Tab");
-  await expect(page.getByRole("link", { name: "Skip to content" })).toBeFocused();
+  await expect(page.getByRole("navigation", { name: "Main", exact: true })).toBeVisible();
+  await page.waitForLoadState("networkidle");
+  const skip = page.getByRole("link", { name: "Skip to content" });
+  await expect(async () => {
+    await page.evaluate(() => {
+      // start keyboard navigation from the top of the page, like a fresh page load
+      document.body.tabIndex = -1;
+      document.body.focus();
+      document.body.removeAttribute("tabindex");
+    });
+    await page.keyboard.press("Tab");
+    await expect(skip).toBeFocused({ timeout: 1000 });
+  }).toPass({ timeout: 15_000 });
+  await page.keyboard.press("Enter");
+  await expect(page.locator("main#main")).toBeFocused();
 });
