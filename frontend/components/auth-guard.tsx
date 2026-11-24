@@ -53,7 +53,7 @@ export function AuthGuard({
   useEffect(() => {
     if (!me) return;
     if (need === "onboarded" && !me.onboarded) router.replace("/onboarding");
-    if (need === "new" && newUserAtLoad.current === false) router.replace("/chat");
+    if (need === "new" && newUserAtLoad.current === false) router.replace("/checkin");
   }, [me, need, router]);
 
   if (error) {

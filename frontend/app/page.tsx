@@ -9,7 +9,7 @@ import { FullPageSpinner } from "@/components/spinner";
 export default function Home() {
   const router = useRouter();
   useEffect(() => {
-    router.replace(tokens.get() ? "/chat" : "/login");
+    router.replace(tokens.get() ? "/checkin" : "/login");
   }, [router]);
   return <FullPageSpinner />;
 }

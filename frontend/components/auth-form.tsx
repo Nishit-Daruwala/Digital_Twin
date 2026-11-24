@@ -35,7 +35,7 @@ export function AuthForm({ mode }: { mode: "login" | "register" }) {
       if (isRegister) await api.register(email, password, name);
       else await api.login(email, password);
       qc.clear(); // drop any cached data from a previous user
-      router.replace(isRegister ? "/onboarding" : "/chat");
+      router.replace(isRegister ? "/onboarding" : "/checkin");
     } catch (err) {
       setError((err as Error).message);
       setBusy(false);

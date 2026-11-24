@@ -3,7 +3,19 @@ import { PASSWORD, loadDemo, registerAndOnboard } from "./helpers";
 
 // The plan's happy path: register → onboard → check-in → chat → dashboard (+ what-if, export).
 test("new user: onboard, check in, chat, dashboard, what-if, export", async ({ page }) => {
-  await registerAndOnboard(page);
+  const email = await registerAndOnboard(page);
+
+  await test.step("logging in (and opening the site) lands on the check-in page", async () => {
+    await page.goto("/settings");
+    await page.getByRole("button", { name: "Log out" }).click();
+    await page.waitForURL("**/login");
+    await page.getByLabel("Email").fill(email);
+    await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
+    await page.getByRole("button", { name: "Log in" }).click();
+    await page.waitForURL("**/checkin");
+    await page.goto("/");
+    await page.waitForURL("**/checkin");
+  });
 
   await test.step("check-in: the day's first check-in is the full form", async () => {
     await expect(page.getByRole("tablist", { name: "Part of the day" })).toBeVisible();
